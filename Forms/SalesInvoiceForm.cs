@@ -1,0 +1,1314 @@
+using System.Globalization;
+using Guna.UI2.WinForms;
+using Guna.UI2.WinForms.Enums;
+using IbrahimAbdo.Login.Theme;
+
+namespace IbrahimAbdo.Login.Forms;
+
+internal sealed class SalesInvoiceForm : Form
+{
+    private readonly System.Windows.Forms.Timer _clockTimer = new() { Interval = 1000 };
+    private Label _lblTime = null!;
+    private Label _lblDate = null!;
+    private DataGridView _grid = null!;
+    private Label _lblSubtotal = null!;
+    private Label _lblTax = null!;
+    private Label _lblGrandTotal = null!;
+    private Label _lblRemaining = null!;
+    private Guna2TextBox _txtDiscount = null!;
+    private Guna2TextBox _txtPaid = null!;
+    private Guna2ComboBox _cmbDiscountUnit = null!;
+    private Bitmap _editIcon = null!;
+    private Bitmap _deleteIcon = null!;
+    private Size? _matchLoginSize;
+    private readonly bool _embedded;
+
+    private readonly List<InvoiceLine> _lines =
+    [
+        new(1, "زيت موتور", 2, 450.00m),
+        new(2, "فلتر زيت", 1, 120.00m),
+        new(3, "بوجيهات", 4, 85.00m),
+        new(4, "فلتر هواء", 1, 180.00m),
+        new(5, "غسيل موتور", 1, 250.00m),
+        new(6, "فحص كمبيوتر", 1, 300.00m),
+        new(7, "تيل فرامل أمامي", 1, 950.00m),
+        new(8, "مياه رادياتير", 2, 75.00m),
+    ];
+
+    public SalesInvoiceForm(bool embedded = false)
+    {
+        _embedded = embedded;
+        SuspendLayout();
+        // Match LoginForm scale + chrome so outer Size matches exactly
+        AutoScaleDimensions = new SizeF(96F, 96F);
+        AutoScaleMode = AutoScaleMode.Dpi;
+        BackColor = InvoiceTheme.Background;
+        ClientSize = new Size(1280, 720);
+        DoubleBuffered = true;
+        Font = InvoiceTheme.BodyFont;
+        ForeColor = InvoiceTheme.White;
+        FormBorderStyle = _embedded ? FormBorderStyle.None : FormBorderStyle.Sizable;
+        MaximizeBox = !_embedded;
+        MaximumSize = new Size(1600, 900);
+        MinimizeBox = !_embedded;
+        MinimumSize = _embedded ? Size.Empty : new Size(1100, 650);
+        Name = "SalesInvoiceForm";
+        // Shell layout stays LTR so Dock.Left/Right match the reference.
+        // Arabic RTL is applied only on text-bearing controls.
+        RightToLeft = RightToLeft.No;
+        RightToLeftLayout = false;
+        ShowIcon = !_embedded;
+        ShowInTaskbar = !_embedded;
+        StartPosition = FormStartPosition.Manual;
+        Text = _embedded ? string.Empty : "فاتورة بيع - Ibrahim Cherokee Auto Service";
+        WindowState = FormWindowState.Normal;
+
+        BuildUi();
+        if (!_embedded)
+        {
+            WireWindowChrome();
+            Shown += (_, _) => PlaceCenteredOnScreen();
+        }
+
+        LoadGrid();
+        RecalculateTotals();
+
+        _clockTimer.Tick += (_, _) => UpdateClock();
+        _clockTimer.Start();
+        UpdateClock();
+        ResumeLayout(true);
+    }
+
+    /// <summary>Copy exact outer Size from the login window before ShowDialog.</summary>
+    public void MatchLoginWindow(Form login)
+    {
+        _matchLoginSize = login.Size;
+        MinimumSize = login.MinimumSize;
+        MaximumSize = login.MaximumSize;
+        FormBorderStyle = login.FormBorderStyle;
+        WindowState = FormWindowState.Normal;
+        Size = login.Size;
+    }
+
+    private void PlaceCenteredOnScreen()
+    {
+        WindowState = FormWindowState.Normal;
+        if (_matchLoginSize is { } match && match.Width > 0 && match.Height > 0)
+        {
+            Size = match;
+        }
+        else
+        {
+            ClientSize = new Size(1280, 720);
+        }
+
+        var area = Screen.FromPoint(Location).WorkingArea;
+        Left = area.Left + Math.Max(0, (area.Width - Width) / 2);
+        Top = area.Top + Math.Max(0, (area.Height - Height) / 2);
+    }
+
+    private void BuildUi()
+    {
+        var main = BuildMainArea();
+        main.Dock = DockStyle.Fill;
+        main.RightToLeft = RightToLeft.No;
+
+        // Embedded inside MainShellForm: content only (sidebar lives on the shell).
+        if (_embedded)
+        {
+            Controls.Add(main);
+            return;
+        }
+
+        // Standalone fallback: sidebar LEFT, content RIGHT
+        var shell = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = InvoiceTheme.Background,
+            RightToLeft = RightToLeft.No
+        };
+
+        var sidebar = BuildSidebar();
+        sidebar.Dock = DockStyle.Left;
+        sidebar.Width = InvoiceTheme.SidebarWidth;
+        sidebar.RightToLeft = RightToLeft.No;
+
+        shell.Controls.Add(main);
+        shell.Controls.Add(sidebar);
+        Controls.Add(shell);
+    }
+
+    private Control BuildSidebar()
+    {
+        var sidebar = new Guna2Panel
+        {
+            Dock = DockStyle.Fill,
+            FillColor = InvoiceTheme.Sidebar,
+            BorderColor = InvoiceTheme.CardBorder,
+            BorderThickness = 0,
+            CustomBorderColor = InvoiceTheme.CardBorder,
+            CustomBorderThickness = new Padding(0, 0, 1, 0),
+            Padding = new Padding(12, 12, 12, 16)
+        };
+
+        // Larger brand logo — top of sidebar
+        var logo = new Panel
+        {
+            Dock = DockStyle.Top,
+            Height = 220,
+            BackColor = Color.Transparent,
+            Padding = new Padding(2, 0, 2, 6)
+        };
+
+        var logoImage = new PictureBox
+        {
+            Dock = DockStyle.Fill,
+            SizeMode = PictureBoxSizeMode.Zoom,
+            BackColor = Color.Transparent
+        };
+        var logoPath = Path.Combine(AppContext.BaseDirectory, "Assets", "logo-ibrahim.png");
+        if (File.Exists(logoPath))
+        {
+            using var fs = File.OpenRead(logoPath);
+            logoImage.Image = Image.FromStream(fs);
+        }
+
+        logo.Controls.Add(logoImage);
+
+        var menuHost = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            AutoScroll = true,
+            BackColor = Color.Transparent,
+            Padding = new Padding(0, 4, 0, 0),
+            RightToLeft = RightToLeft.No
+        };
+
+        // glyph, label — matches reference order & style
+        string[][] items =
+        [
+            ["\uE80F", "لوحة التحكم", "dashboard"],
+            ["\uE77B", "العملاء", "customers"],
+            ["\uE7EC", "السيارات", "vehicles"],
+            ["\uE90F", "الخدمات", "services"],
+            ["\uE8A5", "فاتورة البيع", "invoice"],
+            ["\uE8F1", "المخزون", "inventory"],
+            ["\uE718", "الفنيون", "techs"],
+            ["\uE716", "المستخدمون", "users"],
+            ["\uE713", "الإعدادات", "settings"],
+        ];
+
+        foreach (var item in items)
+        {
+            menuHost.Controls.Add(CreateMenuItem(item[0], item[1], item[2], item[2] == "invoice"));
+        }
+
+        sidebar.Controls.Add(menuHost);
+        sidebar.Controls.Add(logo);
+        return sidebar;
+    }
+
+    private Control CreateMenuItem(string glyph, string text, string key, bool active)
+    {
+        // Arabic text on the right, gold icon on the LEFT (الشمال)
+        const int iconPx = 26;
+        var row = new Guna2Panel
+        {
+            Width = InvoiceTheme.SidebarWidth - 28,
+            Height = 46,
+            Margin = new Padding(0, 0, 0, 4),
+            BorderRadius = 8,
+            FillColor = active ? Color.FromArgb(48, InvoiceTheme.Gold) : Color.Transparent,
+            Cursor = Cursors.Hand,
+            CustomBorderColor = InvoiceTheme.Gold,
+            CustomBorderThickness = active ? new Padding(0, 1, 0, 1) : new Padding(0)
+        };
+
+        // ~1.2cm gap between icon and text (0.2 + 1cm @ 96 DPI)
+        const int gapPx = 45;
+
+        var icon = new PictureBox
+        {
+            Dock = DockStyle.Left,
+            Width = 36,
+            SizeMode = PictureBoxSizeMode.CenterImage,
+            BackColor = Color.Transparent,
+            Image = CreateGlyphBitmap(glyph, InvoiceTheme.Gold, iconPx),
+            Margin = Padding.Empty,
+            Padding = new Padding(8, 0, 0, 0)
+        };
+
+        var label = new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = text,
+            Font = InvoiceTheme.MenuFont,
+            ForeColor = active ? InvoiceTheme.Gold : Color.FromArgb(210, 210, 210),
+            TextAlign = ContentAlignment.MiddleLeft,
+            RightToLeft = RightToLeft.No,
+            BackColor = Color.Transparent,
+            AutoEllipsis = false,
+            Padding = new Padding(gapPx, 0, 8, 0)
+        };
+
+        void SetHover(bool on)
+        {
+            if (active)
+            {
+                return;
+            }
+
+            row.FillColor = on ? Color.FromArgb(36, InvoiceTheme.Gold) : Color.Transparent;
+            label.ForeColor = on ? InvoiceTheme.Gold : Color.FromArgb(210, 210, 210);
+        }
+
+        void OnNavigate(object? s, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left)
+            {
+                return;
+            }
+
+            if (key == "customers")
+            {
+                OpenCustomersPage();
+            }
+            else if (key != "invoice")
+            {
+                MessageBox.Show(this, $"صفحة «{text}» قريباً.", "قريباً", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+
+        // Tag so window-drag chrome won't steal clicks from menu items
+        row.Tag = "nav";
+        icon.Tag = "nav";
+        label.Tag = "nav";
+
+        row.MouseEnter += (_, _) => SetHover(true);
+        row.MouseLeave += (_, _) => SetHover(false);
+        label.MouseEnter += (_, _) => SetHover(true);
+        label.MouseLeave += (_, _) => SetHover(false);
+        icon.MouseEnter += (_, _) => SetHover(true);
+        icon.MouseLeave += (_, _) => SetHover(false);
+        // MouseUp is more reliable than Click when drag chrome is attached
+        row.MouseUp += OnNavigate;
+        label.MouseUp += OnNavigate;
+        icon.MouseUp += OnNavigate;
+
+        // Add icon first so Dock.Left stays on the left edge
+        row.Controls.Add(icon);
+        row.Controls.Add(label);
+        return row;
+    }
+
+    private void OpenCustomersPage()
+    {
+        var bounds = Bounds;
+        using var customers = new CustomersForm();
+        customers.StartPosition = FormStartPosition.Manual;
+        customers.Bounds = bounds;
+        customers.MinimumSize = MinimumSize;
+        customers.MaximumSize = MaximumSize;
+        // Do not pass a hidden owner — ShowDialog(owner) fails when owner is Hide()'d
+        Hide();
+        customers.ShowDialog();
+        Show();
+        Activate();
+        BringToFront();
+    }
+
+    private Control BuildMainArea()
+    {
+        var main = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 4,
+            BackColor = InvoiceTheme.Background,
+            Padding = new Padding(14, 8, 14, 10),
+            RightToLeft = RightToLeft.No
+        };
+        main.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
+        main.RowStyles.Add(new RowStyle(SizeType.Absolute, 252));
+        main.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+        main.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
+
+        main.Controls.Add(BuildTopBar(), 0, 0);
+        main.Controls.Add(BuildTopCards(), 0, 1);
+        main.Controls.Add(BuildCenterSection(), 0, 2);
+        main.Controls.Add(BuildBottomActions(), 0, 3);
+        return main;
+    }
+
+    private Control BuildTopBar()
+    {
+        var bar = new Panel { Dock = DockStyle.Fill, BackColor = InvoiceTheme.Background, RightToLeft = RightToLeft.No };
+
+        var title = new Label
+        {
+            AutoSize = false,
+            Dock = DockStyle.Fill,
+            Font = new Font(InvoiceTheme.Family.FontFamily, 20F, FontStyle.Bold, GraphicsUnit.Point),
+            ForeColor = InvoiceTheme.White,
+            Text = "فاتورة بيع",
+            TextAlign = ContentAlignment.MiddleCenter,
+            RightToLeft = RightToLeft.No,
+            AutoEllipsis = false,
+            UseCompatibleTextRendering = false,
+            Padding = new Padding(0, 4, 0, 4)
+        };
+
+        var right = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Right,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            AutoSize = true,
+            BackColor = Color.Transparent,
+            Padding = new Padding(0, 12, 0, 0),
+            RightToLeft = RightToLeft.No
+        };
+
+        var bell = CreateChromeIconButton("\uE7E7");
+        var badge = new Label
+        {
+            AutoSize = false,
+            Size = new Size(16, 16),
+            Text = "3",
+            Font = new Font(InvoiceTheme.Family.FontFamily, 7F, FontStyle.Bold),
+            ForeColor = Color.Black,
+            BackColor = InvoiceTheme.Gold,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Margin = new Padding(-18, 0, 12, 0)
+        };
+
+        _lblDate = new Label
+        {
+            AutoSize = true,
+            ForeColor = InvoiceTheme.Muted,
+            Font = InvoiceTheme.SmallFont,
+            Text = "08 / 04 / 2026",
+            Margin = new Padding(8, 8, 12, 0)
+        };
+        _lblTime = new Label
+        {
+            AutoSize = true,
+            ForeColor = InvoiceTheme.Muted,
+            Font = InvoiceTheme.SmallFont,
+            Text = "12:30 PM",
+            Margin = new Padding(8, 8, 16, 0)
+        };
+
+        right.Controls.Add(bell);
+        right.Controls.Add(badge);
+        right.Controls.Add(CreateChromeIconButton("\uE787"));
+        right.Controls.Add(_lblDate);
+        right.Controls.Add(CreateChromeIconButton("\uE121"));
+        right.Controls.Add(_lblTime);
+
+        // Fill title first, then right chrome on top so icons stay visible
+        bar.Controls.Add(title);
+        bar.Controls.Add(right);
+        return bar;
+    }
+
+    private Control BuildTopCards()
+    {
+        // LTR columns: Customer | Vehicle | Technician (exact reference order)
+        var row = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 3,
+            RowCount = 1,
+            BackColor = Color.Transparent,
+            Margin = new Padding(0, 0, 0, 4),
+            RightToLeft = RightToLeft.No
+        };
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33F));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 40F));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 27F));
+
+        row.Controls.Add(BuildCustomerCard(), 0, 0);
+        row.Controls.Add(BuildVehicleCard(), 1, 0);
+        row.Controls.Add(BuildTechnicianCard(), 2, 0);
+        return row;
+    }
+
+    private Control BuildCustomerCard()
+    {
+        var (card, body) = CreateCard("بيانات العميل");
+        body.Controls.Add(CreateField("اسم العميل", CreateCombo("كريم أحمد محمد", "محمد علي", "أحمد حسن")), 0, 0);
+        body.Controls.Add(CreateField("رقم الهاتف", CreateInput("010 1234 5678")), 0, 1);
+        body.Controls.Add(CreateField("العنوان", CreateInput("القاهرة - مصر")), 0, 2);
+        return card;
+    }
+
+    private Control BuildVehicleCard()
+    {
+        var (card, body) = CreateCard("بيانات السيارة");
+
+        var plateRow = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            RightToLeft = RightToLeft.No
+        };
+        plateRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+        plateRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+        // Visual RTL field order inside vehicle card: letters then number (right to left reading)
+        plateRow.Controls.Add(CreateField("حروف اللوحة", CreateInput("هـ د ب")), 0, 0);
+        plateRow.Controls.Add(CreateField("رقم اللوحة", CreateCombo("5986", "1234", "7788")), 1, 0);
+
+        body.Controls.Add(plateRow, 0, 0);
+        body.Controls.Add(CreateField("الماركة / الموديل", CreateCombo("تويوتا - كورولا 2020", "هيونداي إلنترا 2021", "كيا سيراتو 2019")), 0, 1);
+        body.Controls.Add(CreateField("قراءة العداد", CreateInput("197377 km")), 0, 2);
+        return card;
+    }
+
+    private Control BuildTechnicianCard()
+    {
+        var (card, body) = CreateCard("الفني المسؤول");
+        body.Controls.Add(CreateField("اختر الفني", CreateCombo("أحمد محمد", "محمد علي", "إبراهيم حسن", "محمود السيد")), 0, 0);
+        return card;
+    }
+
+    private static (Guna2Panel Card, TableLayoutPanel Body) CreateCard(string title)
+    {
+        var card = new Guna2Panel
+        {
+            Dock = DockStyle.Fill,
+            FillColor = InvoiceTheme.Card,
+            BorderColor = InvoiceTheme.CardBorder,
+            BorderThickness = 1,
+            BorderRadius = InvoiceTheme.Radius,
+            Margin = new Padding(4),
+            Padding = new Padding(12, 10, 12, 10),
+            ShadowDecoration =
+            {
+                Enabled = true,
+                Depth = 10,
+                Color = Color.Black,
+                BorderRadius = InvoiceTheme.Radius
+            }
+        };
+
+        var header = new Panel { Dock = DockStyle.Top, Height = 24, BackColor = Color.Transparent };
+        var lbl = new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = title,
+            Font = InvoiceTheme.SectionFont,
+            ForeColor = InvoiceTheme.Gold,
+            TextAlign = ContentAlignment.MiddleRight,
+            RightToLeft = RightToLeft.Yes,
+            AutoEllipsis = false,
+            AutoSize = false
+        };
+        header.Controls.Add(lbl);
+
+        var body = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+            BackColor = Color.Transparent,
+            Padding = new Padding(0, 4, 0, 0),
+            Margin = Padding.Empty,
+            RightToLeft = RightToLeft.No
+        };
+        // label(18) + gap(2) + box(34) + spacing ≈ 64 per row
+        body.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
+        body.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
+        body.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
+
+        card.Controls.Add(body);
+        card.Controls.Add(header);
+        return (card, body);
+    }
+
+    private static Control CreateField(string label, Control input)
+    {
+        var host = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Color.Transparent,
+            Margin = new Padding(2, 0, 2, 0)
+        };
+
+        var lbl = new Label
+        {
+            Location = new Point(0, 0),
+            Size = new Size(10, 18),
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+            Text = label,
+            Font = InvoiceTheme.SmallFont,
+            ForeColor = InvoiceTheme.Muted,
+            TextAlign = ContentAlignment.MiddleRight,
+            RightToLeft = RightToLeft.Yes,
+            AutoEllipsis = false,
+            AutoSize = false
+        };
+
+        input.Location = new Point(0, 20);
+        input.Size = new Size(10, 34);
+        input.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+        input.Height = 34;
+
+        host.Resize += (_, _) =>
+        {
+            lbl.Width = host.ClientSize.Width;
+            input.Width = host.ClientSize.Width;
+        };
+
+        host.Controls.Add(input);
+        host.Controls.Add(lbl);
+        return host;
+    }
+
+    private static Guna2TextBox CreateInput(string text)
+    {
+        return new Guna2TextBox
+        {
+            BorderRadius = 8,
+            BorderThickness = 1,
+            BorderColor = Color.FromArgb(90, InvoiceTheme.Gold),
+            FillColor = InvoiceTheme.InputFill,
+            ForeColor = InvoiceTheme.White,
+            Font = InvoiceTheme.BodyFont,
+            Text = text,
+            Size = new Size(200, 34),
+            Height = 34,
+            PlaceholderForeColor = InvoiceTheme.Muted,
+            FocusedState = { BorderColor = InvoiceTheme.Gold },
+            HoverState = { BorderColor = InvoiceTheme.Gold },
+            RightToLeft = RightToLeft.Yes,
+            TextAlign = HorizontalAlignment.Right
+        };
+    }
+
+    private static Guna2ComboBox CreateCombo(params string[] items)
+    {
+        var combo = new Guna2ComboBox
+        {
+            BorderRadius = 8,
+            BorderThickness = 1,
+            BorderColor = Color.FromArgb(90, InvoiceTheme.Gold),
+            FillColor = InvoiceTheme.InputFill,
+            ForeColor = InvoiceTheme.White,
+            Font = InvoiceTheme.BodyFont,
+            Size = new Size(200, 34),
+            Height = 34,
+            FocusedColor = InvoiceTheme.Gold,
+            HoverState = { BorderColor = InvoiceTheme.Gold },
+            ItemsAppearance = { BackColor = InvoiceTheme.Card, ForeColor = InvoiceTheme.White },
+            RightToLeft = RightToLeft.Yes
+        };
+        combo.Items.AddRange(items);
+        if (items.Length > 0)
+        {
+            combo.SelectedIndex = 0;
+        }
+
+        return combo;
+    }
+
+    private Control BuildCenterSection()
+    {
+        // LTR: table CENTER-LEFT, summary RIGHT (matches reference)
+        var host = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            BackColor = Color.Transparent,
+            RightToLeft = RightToLeft.No
+        };
+        host.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70F));
+        host.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30F));
+
+        host.Controls.Add(BuildTablePanel(), 0, 0);
+        host.Controls.Add(BuildSummaryPanel(), 1, 0);
+        return host;
+    }
+
+    private Control BuildTablePanel()
+    {
+        var card = new Guna2Panel
+        {
+            Dock = DockStyle.Fill,
+            FillColor = InvoiceTheme.Card,
+            BorderColor = InvoiceTheme.CardBorder,
+            BorderThickness = 1,
+            BorderRadius = InvoiceTheme.Radius,
+            Margin = new Padding(6),
+            Padding = new Padding(10),
+            ShadowDecoration = { Enabled = true, Depth = 10, Color = Color.Black, BorderRadius = InvoiceTheme.Radius }
+        };
+
+        _grid = new DataGridView
+        {
+            Dock = DockStyle.Fill,
+            BackgroundColor = InvoiceTheme.Card,
+            BorderStyle = BorderStyle.None,
+            CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
+            ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None,
+            EnableHeadersVisualStyles = false,
+            AllowUserToAddRows = false,
+            AllowUserToDeleteRows = false,
+            AllowUserToResizeRows = false,
+            AllowUserToResizeColumns = false,
+            RowHeadersVisible = false,
+            SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+            MultiSelect = false,
+            ReadOnly = true,
+            EditMode = DataGridViewEditMode.EditProgrammatically,
+            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+            RowTemplate = { Height = 36 },
+            Font = InvoiceTheme.BodyFont,
+            GridColor = Color.FromArgb(45, 45, 45),
+            RightToLeft = RightToLeft.Yes,
+            Cursor = Cursors.Hand,
+            // Prevents first-row ghosting / paint lag
+            AutoGenerateColumns = false
+        };
+        EnableDoubleBuffering(_grid);
+
+        _grid.ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle
+        {
+            BackColor = InvoiceTheme.Gold,
+            ForeColor = Color.Black,
+            Font = InvoiceTheme.TableHeaderFont,
+            Alignment = DataGridViewContentAlignment.MiddleCenter,
+            SelectionBackColor = InvoiceTheme.Gold,
+            SelectionForeColor = Color.Black,
+            WrapMode = DataGridViewTriState.False
+        };
+        _grid.DefaultCellStyle = new DataGridViewCellStyle
+        {
+            BackColor = InvoiceTheme.Card,
+            ForeColor = InvoiceTheme.White,
+            SelectionBackColor = Color.FromArgb(50, InvoiceTheme.Gold),
+            SelectionForeColor = InvoiceTheme.White,
+            Alignment = DataGridViewContentAlignment.MiddleCenter,
+            WrapMode = DataGridViewTriState.False
+        };
+        _grid.AlternatingRowsDefaultCellStyle = new DataGridViewCellStyle
+        {
+            BackColor = InvoiceTheme.RowAlt,
+            ForeColor = InvoiceTheme.White,
+            SelectionBackColor = Color.FromArgb(50, InvoiceTheme.Gold),
+            SelectionForeColor = InvoiceTheme.White,
+            Alignment = DataGridViewContentAlignment.MiddleCenter,
+            WrapMode = DataGridViewTriState.False
+        };
+        _grid.ColumnHeadersHeight = 38;
+        _grid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+
+        _editIcon = CreateGlyphBitmap("\uE70F", InvoiceTheme.Gold, 16);
+        _deleteIcon = CreateGlyphBitmap("\uE74D", InvoiceTheme.Danger, 16);
+
+        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "colIndex", HeaderText = "#", FillWeight = 8, ReadOnly = true });
+        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "colItem", HeaderText = "الصنف / الخدمة", FillWeight = 32, ReadOnly = true });
+        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "colQty", HeaderText = "الكمية", FillWeight = 12, ReadOnly = true });
+        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "colPrice", HeaderText = "سعر الوحدة", FillWeight = 16, ReadOnly = true });
+        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "colTotal", HeaderText = "الإجمالي", FillWeight = 16, ReadOnly = true });
+        _grid.Columns.Add(new DataGridViewImageColumn
+        {
+            Name = "colEdit",
+            HeaderText = "إجراء",
+            FillWeight = 8,
+            ReadOnly = true,
+            Image = _editIcon,
+            ValuesAreIcons = false,
+            ImageLayout = DataGridViewImageCellLayout.Normal,
+            DefaultCellStyle =
+            {
+                NullValue = _editIcon,
+                Alignment = DataGridViewContentAlignment.MiddleCenter,
+                Padding = new Padding(8)
+            }
+        });
+        _grid.Columns.Add(new DataGridViewImageColumn
+        {
+            Name = "colDelete",
+            HeaderText = "",
+            FillWeight = 8,
+            ReadOnly = true,
+            Image = _deleteIcon,
+            ValuesAreIcons = false,
+            ImageLayout = DataGridViewImageCellLayout.Normal,
+            DefaultCellStyle =
+            {
+                NullValue = _deleteIcon,
+                Alignment = DataGridViewContentAlignment.MiddleCenter,
+                Padding = new Padding(8)
+            }
+        });
+
+        _grid.CellClick += OnGridActionClick;
+
+        var actions = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 42,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            BackColor = Color.Transparent,
+            Padding = new Padding(0, 6, 0, 0),
+            RightToLeft = RightToLeft.No
+        };
+        actions.Controls.Add(CreateOutlineButton("حذف الكل", (_, _) =>
+        {
+            _lines.Clear();
+            LoadGrid();
+            RecalculateTotals();
+        }, InvoiceTheme.Danger));
+        actions.Controls.Add(CreateOutlineButton("+ إضافة صنف", (_, _) => AddLine()));
+
+        // Dock order: bottom bar first, then fill grid
+        card.Controls.Add(actions);
+        card.Controls.Add(_grid);
+        return card;
+    }
+
+    private Control BuildSummaryPanel()
+    {
+        var card = new Guna2Panel
+        {
+            Dock = DockStyle.Fill,
+            FillColor = InvoiceTheme.Card,
+            BorderColor = InvoiceTheme.CardBorder,
+            BorderThickness = 1,
+            BorderRadius = InvoiceTheme.Radius,
+            Margin = new Padding(4),
+            Padding = new Padding(18, 14, 18, 14),
+            ShadowDecoration = { Enabled = true, Depth = 10, Color = Color.Black, BorderRadius = InvoiceTheme.Radius }
+        };
+
+        var title = new Label
+        {
+            Dock = DockStyle.Top,
+            Height = 34,
+            Text = "ملخص الفاتورة",
+            Font = InvoiceTheme.SectionFont,
+            ForeColor = InvoiceTheme.Gold,
+            TextAlign = ContentAlignment.MiddleCenter,
+            RightToLeft = RightToLeft.No,
+            AutoSize = false
+        };
+
+        var stack = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 7,
+            BackColor = Color.Transparent,
+            Padding = new Padding(0, 8, 0, 0),
+            RightToLeft = RightToLeft.No
+        };
+        stack.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        stack.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+        stack.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        stack.RowStyles.Add(new RowStyle(SizeType.Absolute, 16));
+        stack.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+        stack.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
+        stack.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+
+        _lblSubtotal = CreateSummaryValue("0.00", InvoiceTheme.White, InvoiceTheme.BodyFont);
+        _lblTax = CreateSummaryValue("0.00", InvoiceTheme.White, InvoiceTheme.BodyFont);
+        _lblGrandTotal = CreateSummaryValue("0.00", InvoiceTheme.Gold, InvoiceTheme.TotalFont);
+        _lblRemaining = CreateSummaryValue("0.00", InvoiceTheme.White, InvoiceTheme.BodyFont);
+
+        _cmbDiscountUnit = new Guna2ComboBox
+        {
+            Dock = DockStyle.Fill,
+            BorderRadius = 6,
+            BorderThickness = 1,
+            BorderColor = Color.FromArgb(120, 120, 120),
+            FillColor = InvoiceTheme.InputFill,
+            ForeColor = InvoiceTheme.White,
+            Font = InvoiceTheme.BodyFont,
+            Height = 28,
+            FocusedColor = InvoiceTheme.Gold,
+            HoverState = { BorderColor = InvoiceTheme.Gold },
+            ItemsAppearance = { BackColor = InvoiceTheme.Card, ForeColor = InvoiceTheme.White },
+            RightToLeft = RightToLeft.No,
+            Margin = new Padding(0, 4, 6, 4)
+        };
+        _cmbDiscountUnit.Items.AddRange("%", "ج.م");
+        _cmbDiscountUnit.SelectedIndex = 0;
+        _cmbDiscountUnit.SelectedIndexChanged += (_, _) => RecalculateTotals();
+
+        _txtDiscount = new Guna2TextBox
+        {
+            Dock = DockStyle.Fill,
+            Text = "0.00",
+            BorderThickness = 0,
+            BorderRadius = 0,
+            FillColor = InvoiceTheme.Card,
+            ForeColor = InvoiceTheme.White,
+            Font = InvoiceTheme.BodyFont,
+            TextAlign = HorizontalAlignment.Right,
+            RightToLeft = RightToLeft.No,
+            Margin = new Padding(0, 2, 0, 2),
+            FocusedState = { BorderColor = InvoiceTheme.Card, FillColor = InvoiceTheme.Card },
+            HoverState = { BorderColor = InvoiceTheme.Card, FillColor = InvoiceTheme.Card }
+        };
+        _txtDiscount.TextChanged += (_, _) => RecalculateTotals();
+
+        _txtPaid = CreateSummaryInput("0.00");
+        _txtPaid.KeyPress += OnPaidKeyPress;
+        _txtPaid.TextChanged += (_, _) => RecalculateTotals();
+
+        var separator = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Color.Transparent,
+            Margin = Padding.Empty
+        };
+        separator.Paint += (_, e) =>
+        {
+            using var pen = new Pen(InvoiceTheme.Gold, 1F);
+            var y = Math.Max(0, separator.Height / 2);
+            e.Graphics.DrawLine(pen, 0, y, separator.Width, y);
+        };
+
+        stack.Controls.Add(CreateSummaryRow("الإجمالي الفرعي", _lblSubtotal, InvoiceTheme.White), 0, 0);
+        stack.Controls.Add(CreateDiscountSummaryRow(), 0, 1);
+        stack.Controls.Add(CreateSummaryRow("الضريبة (0%)", _lblTax, InvoiceTheme.White), 0, 2);
+        stack.Controls.Add(separator, 0, 3);
+        stack.Controls.Add(CreateSummaryRow("المبلغ الإجمالي", _lblGrandTotal, InvoiceTheme.Gold), 0, 4);
+        stack.Controls.Add(CreateSummaryRow("المدفوع", _txtPaid, InvoiceTheme.White), 0, 5);
+        stack.Controls.Add(CreateSummaryRow("المتبقي", _lblRemaining, InvoiceTheme.White), 0, 6);
+
+        card.Controls.Add(stack);
+        card.Controls.Add(title);
+        return card;
+    }
+
+    private static Label CreateSummaryValue(string text, Color color, Font font) =>
+        new()
+        {
+            Dock = DockStyle.Fill,
+            Text = text,
+            Font = font,
+            ForeColor = color,
+            TextAlign = ContentAlignment.MiddleRight,
+            RightToLeft = RightToLeft.No,
+            AutoSize = false,
+            Margin = Padding.Empty
+        };
+
+    private static Guna2TextBox CreateSummaryInput(string text) =>
+        new()
+        {
+            Dock = DockStyle.Fill,
+            BorderRadius = 8,
+            BorderThickness = 1,
+            BorderColor = Color.FromArgb(150, 150, 150),
+            FillColor = InvoiceTheme.InputFill,
+            ForeColor = InvoiceTheme.White,
+            Font = InvoiceTheme.BodyFont,
+            Text = text,
+            TextAlign = HorizontalAlignment.Right,
+            RightToLeft = RightToLeft.No,
+            Margin = new Padding(0, 4, 0, 4),
+            FocusedState = { BorderColor = InvoiceTheme.Gold },
+            HoverState = { BorderColor = Color.FromArgb(180, 180, 180) }
+        };
+
+    private static Label CreateSummaryLabel(string text, Color color) =>
+        new()
+        {
+            Dock = DockStyle.Fill,
+            Text = text,
+            Font = InvoiceTheme.BodyFont,
+            ForeColor = color,
+            TextAlign = ContentAlignment.MiddleLeft,
+            RightToLeft = RightToLeft.No,
+            AutoSize = false,
+            AutoEllipsis = false,
+            Margin = Padding.Empty
+        };
+
+    // Arabic LEFT — value RIGHT
+    private static Control CreateSummaryRow(string label, Control value, Color labelColor)
+    {
+        var row = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            BackColor = Color.Transparent,
+            RightToLeft = RightToLeft.No,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
+
+        row.Controls.Add(CreateSummaryLabel(label, labelColor), 0, 0);
+        value.Dock = DockStyle.Fill;
+        row.Controls.Add(value, 1, 0);
+        return row;
+    }
+
+    // الخصم LEFT | % dropdown | 0.00 RIGHT
+    private Control CreateDiscountSummaryRow()
+    {
+        var row = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 3,
+            RowCount = 1,
+            BackColor = Color.Transparent,
+            RightToLeft = RightToLeft.No,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 58));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
+
+        row.Controls.Add(CreateSummaryLabel("الخصم", InvoiceTheme.White), 0, 0);
+        row.Controls.Add(_cmbDiscountUnit, 1, 0);
+        row.Controls.Add(_txtDiscount, 2, 0);
+        return row;
+    }
+
+    private Control BuildBottomActions()
+    {
+        // Fixed 5-column bottom bar matching reference order (LTR physical):
+        // جديد | حفظ الفاتورة | معاينة | طباعة A4 | طباعة
+        var bar = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 5,
+            RowCount = 1,
+            BackColor = Color.Transparent,
+            Padding = new Padding(4, 6, 4, 0),
+            RightToLeft = RightToLeft.No
+        };
+        for (var i = 0; i < 5; i++)
+        {
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20F));
+        }
+
+        bar.Controls.Add(WrapBottomButton(CreateOutlineAction("جديد", "\uE710", (_, _) =>
+        {
+            _lines.Clear();
+            LoadGrid();
+            RecalculateTotals();
+        })), 0, 0);
+
+        bar.Controls.Add(WrapBottomButton(CreatePrimaryButton("حفظ الفاتورة", "\uE74E", true, (_, _) =>
+            MessageBox.Show(this, "تم حفظ الفاتورة بنجاح", "حفظ"))), 1, 0);
+
+        bar.Controls.Add(WrapBottomButton(CreateOutlineAction("معاينة", "\uE7B3", (_, _) =>
+            MessageBox.Show(this, "معاينة الفاتورة", "معاينة"))), 2, 0);
+
+        bar.Controls.Add(WrapBottomButton(CreateOutlineAction("طباعة A4", "\uE749", (_, _) =>
+            MessageBox.Show(this, "طباعة A4", "طباعة"))), 3, 0);
+
+        bar.Controls.Add(WrapBottomButton(CreatePrimaryButton("طباعة", "\uE749", true, (_, _) =>
+            MessageBox.Show(this, "طباعة الفاتورة", "طباعة"))), 4, 0);
+
+        return bar;
+    }
+
+    private static Control WrapBottomButton(Control button)
+    {
+        button.Dock = DockStyle.Fill;
+        button.Margin = new Padding(5, 0, 5, 0);
+        return button;
+    }
+
+    private Guna2Button CreatePrimaryButton(string text, string glyph, bool wide, EventHandler onClick)
+    {
+        var btn = new Guna2Button
+        {
+            Text = text,
+            Font = InvoiceTheme.MenuFont,
+            ForeColor = Color.Black,
+            FillColor = InvoiceTheme.Gold,
+            BorderRadius = InvoiceTheme.Radius,
+            Height = 46,
+            MinimumSize = new Size(wide ? 160 : 120, 46),
+            Cursor = Cursors.Hand,
+            Image = CreateGlyphBitmap(glyph, Color.Black, 16),
+            ImageSize = new Size(16, 16),
+            ImageAlign = HorizontalAlignment.Left,
+            TextAlign = HorizontalAlignment.Center,
+            HoverState = { FillColor = InvoiceTheme.GoldDark, ForeColor = Color.Black },
+            RightToLeft = RightToLeft.Yes
+        };
+        btn.Click += onClick;
+        return btn;
+    }
+
+    private Guna2Button CreateOutlineAction(string text, string glyph, EventHandler onClick)
+    {
+        var btn = new Guna2Button
+        {
+            Text = text,
+            Font = InvoiceTheme.MenuFont,
+            ForeColor = InvoiceTheme.White,
+            FillColor = InvoiceTheme.Card,
+            BorderColor = InvoiceTheme.Gold,
+            BorderThickness = 1,
+            BorderRadius = InvoiceTheme.Radius,
+            Height = 46,
+            MinimumSize = new Size(130, 46),
+            Cursor = Cursors.Hand,
+            Image = CreateGlyphBitmap(glyph, InvoiceTheme.Gold, 16),
+            ImageSize = new Size(16, 16),
+            ImageAlign = HorizontalAlignment.Left,
+            TextAlign = HorizontalAlignment.Center,
+            HoverState = { FillColor = Color.FromArgb(35, InvoiceTheme.Gold), BorderColor = InvoiceTheme.Gold, ForeColor = InvoiceTheme.White },
+            RightToLeft = RightToLeft.Yes
+        };
+        btn.Click += onClick;
+        return btn;
+    }
+
+    private static Guna2Button CreateOutlineButton(string text, EventHandler onClick, Color? border = null)
+    {
+        var color = border ?? InvoiceTheme.Gold;
+        var btn = new Guna2Button
+        {
+            Text = text,
+            Font = InvoiceTheme.SmallFont,
+            ForeColor = InvoiceTheme.White,
+            FillColor = InvoiceTheme.Background,
+            BorderColor = color,
+            BorderThickness = 1,
+            BorderRadius = 8,
+            Height = 34,
+            Width = 130,
+            AutoSize = false,
+            Margin = new Padding(8, 0, 0, 0),
+            Cursor = Cursors.Hand,
+            HoverState = { FillColor = Color.FromArgb(30, color), BorderColor = color, ForeColor = InvoiceTheme.White },
+            RightToLeft = RightToLeft.Yes
+        };
+        btn.Click += onClick;
+        return btn;
+    }
+
+    private Guna2Button CreateChromeIconButton(string glyph)
+    {
+        return new Guna2Button
+        {
+            Size = new Size(34, 34),
+            BorderRadius = 8,
+            FillColor = Color.Transparent,
+            Font = InvoiceTheme.IconFont,
+            Text = glyph,
+            ForeColor = InvoiceTheme.Gold,
+            Margin = new Padding(4, 0, 4, 0),
+            Cursor = Cursors.Hand,
+            HoverState = { FillColor = Color.FromArgb(30, InvoiceTheme.Gold), ForeColor = InvoiceTheme.Gold }
+        };
+    }
+
+    private void WireWindowChrome()
+    {
+        MouseDown += StartDrag;
+        foreach (Control c in Controls)
+        {
+            AttachDrag(c);
+        }
+    }
+
+    private void AttachDrag(Control control)
+    {
+        // Never attach drag to interactive / navigation controls
+        if (control is Guna2Button or Guna2TextBox or Guna2ComboBox or DataGridView
+            or TextBoxBase or ComboBox or PictureBox)
+        {
+            foreach (Control child in control.Controls)
+            {
+                AttachDrag(child);
+            }
+
+            return;
+        }
+
+        if (control.Tag is "nav")
+        {
+            return;
+        }
+
+        control.MouseDown += StartDrag;
+        foreach (Control child in control.Controls)
+        {
+            AttachDrag(child);
+        }
+    }
+
+    private void StartDrag(object? sender, MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Left || WindowState == FormWindowState.Maximized)
+        {
+            return;
+        }
+
+        if (sender is Control { Tag: "nav" })
+        {
+            return;
+        }
+
+        Capture = false;
+        _ = ReleaseCapture();
+        _ = SendMessage(Handle, 0xA1, 2, 0);
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool ReleaseCapture();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
+
+    private void LoadGrid()
+    {
+        _grid.SuspendLayout();
+        _grid.Rows.Clear();
+        var index = 1;
+        foreach (var line in _lines)
+        {
+            _grid.Rows.Add(
+                index++,
+                line.Name,
+                line.Qty.ToString(),
+                line.UnitPrice.ToString("N2"),
+                line.Total.ToString("N2"),
+                _editIcon,
+                _deleteIcon);
+        }
+
+        _grid.ClearSelection();
+        _grid.CurrentCell = null;
+        _grid.ResumeLayout();
+        _grid.Refresh();
+    }
+
+    private void AddLine()
+    {
+        _lines.Add(new InvoiceLine(_lines.Count + 1, "صنف جديد", 1, 100m));
+        LoadGrid();
+        RecalculateTotals();
+    }
+
+    private void OnGridActionClick(object? sender, DataGridViewCellEventArgs e)
+    {
+        if (e.RowIndex < 0 || e.ColumnIndex < 0)
+        {
+            return;
+        }
+
+        var name = _grid.Columns[e.ColumnIndex].Name;
+        if (name == "colDelete")
+        {
+            _lines.RemoveAt(e.RowIndex);
+            LoadGrid();
+            RecalculateTotals();
+        }
+        else if (name == "colEdit")
+        {
+            MessageBox.Show(this, $"تعديل: {_lines[e.RowIndex].Name}", "تعديل صنف");
+        }
+    }
+
+    private static void EnableDoubleBuffering(DataGridView grid)
+    {
+        typeof(DataGridView)
+            .GetProperty("DoubleBuffered", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            ?.SetValue(grid, true, null);
+    }
+
+    private static void OnPaidKeyPress(object? sender, KeyPressEventArgs e)
+    {
+        if (char.IsControl(e.KeyChar))
+        {
+            return;
+        }
+
+        if (char.IsDigit(e.KeyChar) || e.KeyChar is '.' or ',')
+        {
+            return;
+        }
+
+        e.Handled = true;
+    }
+
+    private static bool TryParseMoney(string? text, out decimal value)
+    {
+        value = 0m;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return true;
+        }
+
+        var normalized = text.Trim().Replace(",", "");
+        return decimal.TryParse(normalized, NumberStyles.Number, CultureInfo.InvariantCulture, out value);
+    }
+
+    private void RecalculateTotals()
+    {
+        var subtotal = _lines.Sum(l => l.Total);
+        _ = TryParseMoney(_txtDiscount.Text, out var discountValue);
+        var discount = _cmbDiscountUnit.SelectedItem?.ToString() == "%"
+            ? subtotal * discountValue / 100m
+            : discountValue;
+        var tax = 0m;
+        var grand = Math.Max(0, subtotal - discount + tax);
+        _ = TryParseMoney(_txtPaid?.Text, out var paid);
+        if (paid > grand)
+        {
+            paid = grand;
+        }
+
+        var remaining = Math.Max(0, grand - paid);
+
+        _lblSubtotal.Text = subtotal.ToString("N2");
+        _lblTax.Text = tax.ToString("N2");
+        _lblGrandTotal.Text = grand.ToString("N2");
+        _lblRemaining.Text = remaining.ToString("N2");
+    }
+
+    private void UpdateClock()
+    {
+        _lblTime.Text = DateTime.Now.ToString("hh:mm tt");
+        _lblDate.Text = DateTime.Now.ToString("dd / MM / yyyy");
+    }
+
+    private static Bitmap CreateGlyphBitmap(string glyph, Color color, int size)
+    {
+        var bmp = new Bitmap(size + 6, size + 6);
+        using var g = Graphics.FromImage(bmp);
+        g.Clear(Color.Transparent);
+        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+        using var font = new Font("Segoe MDL2 Assets", size * 0.7F, FontStyle.Regular, GraphicsUnit.Pixel);
+        TextRenderer.DrawText(g, glyph, font, new Rectangle(0, 0, bmp.Width, bmp.Height), color,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+        return bmp;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _clockTimer.Dispose();
+        }
+
+        base.Dispose(disposing);
+    }
+
+    private sealed record InvoiceLine(int Id, string Name, int Qty, decimal UnitPrice)
+    {
+        public decimal Total => Qty * UnitPrice;
+    }
+}
