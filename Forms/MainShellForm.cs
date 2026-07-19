@@ -37,8 +37,13 @@ internal sealed class MainShellForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         Text = "Ibrahim Abdo Auto Service";
         WindowState = FormWindowState.Maximized;
+        if (AppIcon.Current is { } appIcon)
+        {
+            Icon = appIcon;
+        }
 
         CustomerStore.Load();
+        UserStore.Load();
 
         var shell = new Panel
         {
@@ -71,7 +76,7 @@ internal sealed class MainShellForm : Form
 
     public void Navigate(string key)
     {
-        if (key is not ("invoice" or "customers"))
+        if (key is not ("invoice" or "customers" or "users"))
         {
             var label = key switch
             {
@@ -80,7 +85,6 @@ internal sealed class MainShellForm : Form
                 "services" => "الخدمات",
                 "inventory" => "المخزون",
                 "techs" => "الفنيون",
-                "users" => "المستخدمون",
                 "settings" => "الإعدادات",
                 _ => key
             };
@@ -98,6 +102,7 @@ internal sealed class MainShellForm : Form
             page = key switch
             {
                 "customers" => new CustomersForm(embedded: true),
+                "users" => new UsersForm(embedded: true),
                 _ => new SalesInvoiceForm(embedded: true)
             };
             page.TopLevel = false;
@@ -114,9 +119,12 @@ internal sealed class MainShellForm : Form
         page.BringToFront();
         _activeKey = key;
         UpdateMenuHighlight();
-        Text = key == "customers"
-            ? "العملاء - Ibrahim Abdo Auto Service"
-            : "فاتورة بيع - Ibrahim Abdo Auto Service";
+        Text = key switch
+        {
+            "customers" => "العملاء - Ibrahim Abdo Auto Service",
+            "users" => "المستخدمون - Ibrahim Abdo Auto Service",
+            _ => "فاتورة بيع - Ibrahim Abdo Auto Service"
+        };
     }
 
     private void UpdateMenuHighlight()

@@ -73,6 +73,10 @@ partial class LoginForm
         StartPosition = FormStartPosition.CenterScreen;
         Text = "Ibrahim Abdo Auto Service - Login";
         WindowState = FormWindowState.Normal;
+        if (Helpers.AppIcon.Current is { } appIcon)
+        {
+            Icon = appIcon;
+        }
 
         // _loginPanel — 445x400 rectangle in the black center void
         _loginPanel.BackColor = Color.Transparent;

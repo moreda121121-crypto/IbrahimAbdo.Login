@@ -1,4 +1,5 @@
 using Guna.UI2.WinForms;
+using IbrahimAbdo.Login.Data;
 using IbrahimAbdo.Login.Theme;
 
 namespace IbrahimAbdo.Login.Forms;
@@ -182,15 +183,15 @@ internal sealed partial class LoginForm : Form
             return;
         }
 
-        // Default test account
-        if (username != "123" || password != "123")
+        UserStore.Load();
+        if (!UserStore.Validate(username, password))
         {
             MessageBox.Show(this, "Invalid username or password.", "Login", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }
 
         Hide();
-        Data.CustomerStore.Load();
+        CustomerStore.Load();
         using var shell = new MainShellForm();
         shell.ShowDialog();
         Close();

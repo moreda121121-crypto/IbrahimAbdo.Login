@@ -1,6 +1,7 @@
 using System.Globalization;
 using Guna.UI2.WinForms;
 using Guna.UI2.WinForms.Enums;
+using IbrahimAbdo.Login.Data;
 using IbrahimAbdo.Login.Theme;
 
 namespace IbrahimAbdo.Login.Forms;
@@ -22,6 +23,19 @@ internal sealed class SalesInvoiceForm : Form
     private Bitmap _deleteIcon = null!;
     private Size? _matchLoginSize;
     private readonly bool _embedded;
+
+    private Guna2ComboBox _cmbCustomer = null!;
+    private Guna2TextBox _txtPhone = null!;
+    private Guna2TextBox _txtAddress = null!;
+    private Guna2TextBox _txtPlateLetters = null!;
+    private Guna2TextBox _txtPlateNumber = null!;
+    private Guna2TextBox _txtCarModel = null!;
+    private Guna2ComboBox _cmbCarModel = null!;
+    private Guna2TextBox _txtOdometer = null!;
+    private Guna2ComboBox _cmbTechnician = null!;
+    private Guna2ComboBox _cmbPayment = null!;
+    private CustomerRecord? _selectedCustomer;
+    private bool _suppressVehicleSync;
 
     private readonly List<InvoiceLine> _lines =
     [
@@ -63,6 +77,8 @@ internal sealed class SalesInvoiceForm : Form
         Text = _embedded ? string.Empty : "فاتورة بيع - Ibrahim Cherokee Auto Service";
         WindowState = FormWindowState.Normal;
 
+        CustomerStore.Load();
+        InvoiceStore.Load();
         BuildUi();
         if (!_embedded)
         {
@@ -439,9 +455,18 @@ internal sealed class SalesInvoiceForm : Form
     private Control BuildCustomerCard()
     {
         var (card, body) = CreateCard("بيانات العميل");
-        body.Controls.Add(CreateField("اسم العميل", CreateCombo("كريم أحمد محمد", "محمد علي", "أحمد حسن")), 0, 0);
-        body.Controls.Add(CreateField("رقم الهاتف", CreateInput("010 1234 5678")), 0, 1);
-        body.Controls.Add(CreateField("العنوان", CreateInput("القاهرة - مصر")), 0, 2);
+
+        _cmbCustomer = CreateSearchableCustomerCombo();
+        _txtPhone = CreateInput("");
+        _txtPhone.PlaceholderText = "رقم الهاتف";
+        _txtPhone.ReadOnly = true;
+        _txtAddress = CreateInput("");
+        _txtAddress.PlaceholderText = "العنوان";
+        _txtAddress.ReadOnly = true;
+
+        body.Controls.Add(CreateField("اسم العميل", _cmbCustomer), 0, 0);
+        body.Controls.Add(CreateField("رقم الهاتف", _txtPhone), 0, 1);
+        body.Controls.Add(CreateField("العنوان", _txtAddress), 0, 2);
         return card;
     }
 
@@ -458,20 +483,246 @@ internal sealed class SalesInvoiceForm : Form
         };
         plateRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
         plateRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
-        // Visual RTL field order inside vehicle card: letters then number (right to left reading)
-        plateRow.Controls.Add(CreateField("حروف اللوحة", CreateInput("هـ د ب")), 0, 0);
-        plateRow.Controls.Add(CreateField("رقم اللوحة", CreateCombo("5986", "1234", "7788")), 1, 0);
+
+        _txtPlateLetters = CreateInput("");
+        _txtPlateLetters.PlaceholderText = "حروف اللوحة";
+        _txtPlateLetters.ReadOnly = true;
+
+        _txtPlateNumber = CreateInput("");
+        _txtPlateNumber.PlaceholderText = "رقم اللوحة";
+        _txtPlateNumber.ReadOnly = true;
+
+        _txtCarModel = CreateInput("");
+        _txtCarModel.PlaceholderText = "الماركة / الموديل";
+        _txtCarModel.ReadOnly = true;
+        _txtCarModel.Dock = DockStyle.Fill;
+
+        _cmbCarModel = CreateCombo();
+        _cmbCarModel.AutoCompleteSource = AutoCompleteSource.ListItems;
+        _cmbCarModel.AutoCompleteMode = AutoCompleteMode.SuggestAppend;
+        _cmbCarModel.Dock = DockStyle.Fill;
+        _cmbCarModel.Visible = false;
+        _cmbCarModel.SelectedIndexChanged += (_, _) =>
+        {
+            if (!_suppressVehicleSync)
+            {
+                ApplyCarAtIndex(_cmbCarModel.SelectedIndex);
+            }
+        };
+
+        var modelHost = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Color.Transparent
+        };
+        modelHost.Controls.Add(_cmbCarModel);
+        modelHost.Controls.Add(_txtCarModel);
+        modelHost.Resize += (_, _) =>
+        {
+            _txtCarModel.SetBounds(0, 0, modelHost.ClientSize.Width, 34);
+            _cmbCarModel.SetBounds(0, 0, modelHost.ClientSize.Width, 34);
+        };
+
+        _txtOdometer = CreateInput("");
+        _txtOdometer.PlaceholderText = "قراءة العداد";
+        _txtOdometer.ReadOnly = true;
+
+        plateRow.Controls.Add(CreateField("حروف اللوحة", _txtPlateLetters), 0, 0);
+        plateRow.Controls.Add(CreateField("رقم اللوحة", _txtPlateNumber), 1, 0);
 
         body.Controls.Add(plateRow, 0, 0);
-        body.Controls.Add(CreateField("الماركة / الموديل", CreateCombo("تويوتا - كورولا 2020", "هيونداي إلنترا 2021", "كيا سيراتو 2019")), 0, 1);
-        body.Controls.Add(CreateField("قراءة العداد", CreateInput("197377 km")), 0, 2);
+        body.Controls.Add(CreateField("الماركة / الموديل", modelHost), 0, 1);
+        body.Controls.Add(CreateField("قراءة العداد", _txtOdometer), 0, 2);
         return card;
+    }
+
+    private Guna2ComboBox CreateSearchableCustomerCombo()
+    {
+        var combo = CreateCombo();
+        var names = CustomerStore.All.Select(c => c.Name).Distinct().ToArray();
+        combo.Items.AddRange(names);
+
+        // Guna combo is DropDownList — only ListItems autocomplete is allowed.
+        combo.AutoCompleteSource = AutoCompleteSource.ListItems;
+        combo.AutoCompleteMode = AutoCompleteMode.SuggestAppend;
+        combo.SelectedIndex = -1;
+
+        combo.SelectedIndexChanged += (_, _) => ApplySelectedCustomer();
+        combo.TextChanged += (_, _) =>
+        {
+            if (string.IsNullOrWhiteSpace(combo.Text))
+            {
+                ClearCustomerAndVehicle();
+            }
+        };
+        combo.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode == Keys.Enter)
+            {
+                TryApplyCustomerByTypedText();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+        };
+
+        return combo;
+    }
+
+    private void TryApplyCustomerByTypedText()
+    {
+        var typed = _cmbCustomer.Text.Trim();
+        if (string.IsNullOrWhiteSpace(typed))
+        {
+            ClearCustomerAndVehicle();
+            return;
+        }
+
+        var match = CustomerStore.All.FirstOrDefault(c =>
+            c.Name.Equals(typed, StringComparison.OrdinalIgnoreCase) ||
+            c.Name.Contains(typed, StringComparison.OrdinalIgnoreCase) ||
+            c.Phone.Contains(typed));
+
+        if (match is null)
+        {
+            return;
+        }
+
+        var index = _cmbCustomer.Items.IndexOf(match.Name);
+        if (index >= 0 && _cmbCustomer.SelectedIndex != index)
+        {
+            _cmbCustomer.SelectedIndex = index;
+        }
+        else
+        {
+            ApplyCustomer(match);
+        }
+    }
+
+    private void ApplySelectedCustomer()
+    {
+        if (_cmbCustomer.SelectedItem is not string name)
+        {
+            return;
+        }
+
+        var customer = CustomerStore.All.FirstOrDefault(c => c.Name == name);
+        if (customer is not null)
+        {
+            ApplyCustomer(customer);
+        }
+    }
+
+    private void ApplyCustomer(CustomerRecord customer)
+    {
+        _selectedCustomer = customer;
+        _txtPhone.Text = customer.Phone;
+        _txtAddress.Text = string.IsNullOrWhiteSpace(customer.Address) ? "—" : customer.Address;
+
+        _cmbCarModel.Items.Clear();
+        _txtCarModel.Text = "";
+        _txtPlateLetters.Text = "";
+        _txtPlateNumber.Text = "";
+        _txtOdometer.Text = "";
+
+        if (customer.Cars.Count == 0)
+        {
+            SetCarModelMode(multiCar: false);
+            return;
+        }
+
+        foreach (var car in customer.Cars)
+        {
+            _cmbCarModel.Items.Add($"{car.Brand} - {car.Model} {car.Year}".Trim());
+        }
+
+        // Single car: black text field. Multiple cars: searchable combo.
+        SetCarModelMode(multiCar: customer.Cars.Count > 1);
+        ApplyCarAtIndex(0);
+    }
+
+    private void SetCarModelMode(bool multiCar)
+    {
+        _cmbCarModel.Visible = multiCar;
+        _txtCarModel.Visible = !multiCar;
+        if (multiCar)
+        {
+            _cmbCarModel.BringToFront();
+        }
+        else
+        {
+            _txtCarModel.BringToFront();
+        }
+    }
+
+    private void ApplyCarAtIndex(int index)
+    {
+        if (_selectedCustomer is null || index < 0 || index >= _selectedCustomer.Cars.Count)
+        {
+            return;
+        }
+
+        var car = _selectedCustomer.Cars[index];
+        var (letters, number) = SplitPlate(car.PlateNumber);
+        var modelText = $"{car.Brand} - {car.Model} {car.Year}".Trim();
+
+        _suppressVehicleSync = true;
+        try
+        {
+            if (_cmbCarModel.Items.Count > index && _cmbCarModel.SelectedIndex != index)
+            {
+                _cmbCarModel.SelectedIndex = index;
+            }
+
+            _txtCarModel.Text = modelText;
+            _txtPlateLetters.Text = letters;
+            _txtPlateNumber.Text = string.IsNullOrWhiteSpace(number) ? car.PlateNumber : number;
+            _txtOdometer.Text = car.Mileage > 0 ? $"{car.Mileage:N0} km" : "";
+        }
+        finally
+        {
+            _suppressVehicleSync = false;
+        }
+    }
+
+    private void ClearCustomerAndVehicle()
+    {
+        _selectedCustomer = null;
+        _txtPhone.Text = "";
+        _txtAddress.Text = "";
+        _txtPlateLetters.Text = "";
+        _txtPlateNumber.Text = "";
+        _txtCarModel.Text = "";
+        _txtOdometer.Text = "";
+        _cmbCarModel.Items.Clear();
+        SetCarModelMode(multiCar: false);
+    }
+
+    private static (string Letters, string Number) SplitPlate(string plate)
+    {
+        var parts = plate.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+        {
+            return ("", "");
+        }
+
+        var last = parts[^1];
+        if (last.All(char.IsDigit))
+        {
+            return (string.Join(" ", parts[..^1]), last);
+        }
+
+        return (plate, "");
     }
 
     private Control BuildTechnicianCard()
     {
         var (card, body) = CreateCard("الفني المسؤول");
-        body.Controls.Add(CreateField("اختر الفني", CreateCombo("أحمد محمد", "محمد علي", "إبراهيم حسن", "محمود السيد")), 0, 0);
+        _cmbTechnician = CreateCombo("أحمد محمد", "محمد علي", "إبراهيم حسن", "محمود السيد");
+        _cmbTechnician.SelectedIndex = -1;
+        _cmbPayment = CreateCombo("نقدي", "انستا باي", "فيزا");
+        _cmbPayment.SelectedIndex = -1;
+        body.Controls.Add(CreateField("اختر الفني", _cmbTechnician), 0, 0);
+        body.Controls.Add(CreateField("طريقة الدفع", _cmbPayment), 0, 1);
         return card;
     }
 
@@ -606,9 +857,9 @@ internal sealed class SalesInvoiceForm : Form
             ItemsAppearance = { BackColor = InvoiceTheme.Card, ForeColor = InvoiceTheme.White },
             RightToLeft = RightToLeft.Yes
         };
-        combo.Items.AddRange(items);
         if (items.Length > 0)
         {
+            combo.Items.AddRange(items);
             combo.SelectedIndex = 0;
         }
 
@@ -981,40 +1232,32 @@ internal sealed class SalesInvoiceForm : Form
 
     private Control BuildBottomActions()
     {
-        // Fixed 5-column bottom bar matching reference order (LTR physical):
-        // جديد | حفظ الفاتورة | معاينة | طباعة A4 | طباعة
+        // Fixed 3-column bottom bar: جديد | حفظ الفاتورة | طباعة
         var bar = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 5,
+            ColumnCount = 3,
             RowCount = 1,
             BackColor = Color.Transparent,
             Padding = new Padding(4, 6, 4, 0),
             RightToLeft = RightToLeft.No
         };
-        for (var i = 0; i < 5; i++)
+        for (var i = 0; i < 3; i++)
         {
-            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20F));
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
         }
 
-        bar.Controls.Add(WrapBottomButton(CreateOutlineAction("جديد", "\uE710", (_, _) =>
+        bar.Controls.Add(WrapBottomButton(CreateBottomAction("جديد", "\uE710", (_, _) => ResetInvoice())), 0, 0);
+
+        bar.Controls.Add(WrapBottomButton(CreateBottomAction("حفظ الفاتورة", "\uE74E", (_, _) =>
         {
-            _lines.Clear();
-            LoadGrid();
-            RecalculateTotals();
-        })), 0, 0);
+            if (SaveInvoice(showSuccess: true) is not null)
+            {
+                // saved
+            }
+        })), 1, 0);
 
-        bar.Controls.Add(WrapBottomButton(CreatePrimaryButton("حفظ الفاتورة", "\uE74E", true, (_, _) =>
-            MessageBox.Show(this, "تم حفظ الفاتورة بنجاح", "حفظ"))), 1, 0);
-
-        bar.Controls.Add(WrapBottomButton(CreateOutlineAction("معاينة", "\uE7B3", (_, _) =>
-            MessageBox.Show(this, "معاينة الفاتورة", "معاينة"))), 2, 0);
-
-        bar.Controls.Add(WrapBottomButton(CreateOutlineAction("طباعة A4", "\uE749", (_, _) =>
-            MessageBox.Show(this, "طباعة A4", "طباعة"))), 3, 0);
-
-        bar.Controls.Add(WrapBottomButton(CreatePrimaryButton("طباعة", "\uE749", true, (_, _) =>
-            MessageBox.Show(this, "طباعة الفاتورة", "طباعة"))), 4, 0);
+        bar.Controls.Add(WrapBottomButton(CreateBottomAction("طباعة", "\uE749", (_, _) => PrintInvoice())), 2, 0);
 
         return bar;
     }
@@ -1026,50 +1269,38 @@ internal sealed class SalesInvoiceForm : Form
         return button;
     }
 
-    private Guna2Button CreatePrimaryButton(string text, string glyph, bool wide, EventHandler onClick)
+    private Guna2Button CreateBottomAction(string text, string glyph, EventHandler onClick)
     {
+        var iconNormal = CreateGlyphBitmap(glyph, InvoiceTheme.White, 20);
+        var iconHover = CreateGlyphBitmap(glyph, Color.Black, 20);
         var btn = new Guna2Button
         {
-            Text = text,
-            Font = InvoiceTheme.MenuFont,
-            ForeColor = Color.Black,
-            FillColor = InvoiceTheme.Gold,
-            BorderRadius = InvoiceTheme.Radius,
-            Height = 46,
-            MinimumSize = new Size(wide ? 160 : 120, 46),
-            Cursor = Cursors.Hand,
-            Image = CreateGlyphBitmap(glyph, Color.Black, 16),
-            ImageSize = new Size(16, 16),
-            ImageAlign = HorizontalAlignment.Left,
-            TextAlign = HorizontalAlignment.Center,
-            HoverState = { FillColor = InvoiceTheme.GoldDark, ForeColor = Color.Black },
-            RightToLeft = RightToLeft.Yes
-        };
-        btn.Click += onClick;
-        return btn;
-    }
-
-    private Guna2Button CreateOutlineAction(string text, string glyph, EventHandler onClick)
-    {
-        var btn = new Guna2Button
-        {
-            Text = text,
-            Font = InvoiceTheme.MenuFont,
+            Text = "  " + text,
+            Font = new Font(InvoiceTheme.Family.FontFamily, 12F, FontStyle.Bold, GraphicsUnit.Point),
             ForeColor = InvoiceTheme.White,
             FillColor = InvoiceTheme.Card,
-            BorderColor = InvoiceTheme.Gold,
+            BorderColor = Color.FromArgb(70, 70, 70),
             BorderThickness = 1,
             BorderRadius = InvoiceTheme.Radius,
             Height = 46,
-            MinimumSize = new Size(130, 46),
+            MinimumSize = new Size(140, 46),
             Cursor = Cursors.Hand,
-            Image = CreateGlyphBitmap(glyph, InvoiceTheme.Gold, 16),
-            ImageSize = new Size(16, 16),
+            Animated = true,
+            Image = iconNormal,
+            ImageSize = new Size(20, 20),
             ImageAlign = HorizontalAlignment.Left,
             TextAlign = HorizontalAlignment.Center,
-            HoverState = { FillColor = Color.FromArgb(35, InvoiceTheme.Gold), BorderColor = InvoiceTheme.Gold, ForeColor = InvoiceTheme.White },
+            HoverState =
+            {
+                FillColor = InvoiceTheme.Gold,
+                BorderColor = InvoiceTheme.Gold,
+                ForeColor = Color.Black
+            },
+            PressedColor = InvoiceTheme.GoldDark,
             RightToLeft = RightToLeft.Yes
         };
+        btn.MouseEnter += (_, _) => btn.Image = iconHover;
+        btn.MouseLeave += (_, _) => btn.Image = iconNormal;
         btn.Click += onClick;
         return btn;
     }
@@ -1254,6 +1485,193 @@ internal sealed class SalesInvoiceForm : Form
 
         var normalized = text.Trim().Replace(",", "");
         return decimal.TryParse(normalized, NumberStyles.Number, CultureInfo.InvariantCulture, out value);
+    }
+
+    private void ResetInvoice()
+    {
+        _cmbCustomer.SelectedIndex = -1;
+        _cmbCustomer.Text = "";
+        ClearCustomerAndVehicle();
+        _cmbTechnician.SelectedIndex = -1;
+        _cmbPayment.SelectedIndex = -1;
+        _txtDiscount.Text = "0.00";
+        _txtPaid.Text = "0.00";
+        _lines.Clear();
+        LoadGrid();
+        RecalculateTotals();
+    }
+
+    private string GetCarModelText()
+    {
+        if (_cmbCarModel.Visible && _cmbCarModel.SelectedItem is string selected)
+        {
+            return selected;
+        }
+
+        return _txtCarModel.Text.Trim();
+    }
+
+    private bool TryValidateInvoice(out string missingField)
+    {
+        missingField = "";
+
+        if (string.IsNullOrWhiteSpace(_cmbCustomer.Text))
+        {
+            missingField = "اسم العميل";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(_txtPhone.Text))
+        {
+            missingField = "رقم الهاتف";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(_txtAddress.Text) || _txtAddress.Text == "—")
+        {
+            missingField = "العنوان";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(_txtPlateLetters.Text))
+        {
+            missingField = "حروف اللوحة";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(_txtPlateNumber.Text))
+        {
+            missingField = "رقم اللوحة";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(GetCarModelText()))
+        {
+            missingField = "الماركة / الموديل";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(_txtOdometer.Text))
+        {
+            missingField = "قراءة العداد";
+            return false;
+        }
+
+        if (_cmbTechnician.SelectedIndex < 0 || string.IsNullOrWhiteSpace(_cmbTechnician.Text))
+        {
+            missingField = "الفني المسؤول";
+            return false;
+        }
+
+        if (_cmbPayment.SelectedIndex < 0 || string.IsNullOrWhiteSpace(_cmbPayment.Text))
+        {
+            missingField = "طريقة الدفع";
+            return false;
+        }
+
+        if (_lines.Count == 0)
+        {
+            missingField = "أصناف الفاتورة";
+            return false;
+        }
+
+        return true;
+    }
+
+    private void PrintInvoice()
+    {
+        var invoice = SaveInvoice(showSuccess: false);
+        if (invoice is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var path = Helpers.InvoicePdfGenerator.GenerateAndOpen(invoice);
+            AppMessageDialog.Success(this,
+                $"تم حفظ الفاتورة وطباعتها.\r\nرقم الفاتورة: {invoice.Number}\r\nالملف: {Path.GetFileName(path)}",
+                "طباعة");
+        }
+        catch (Exception ex)
+        {
+            AppMessageDialog.Error(this, $"تعذر إنشاء ملف الطباعة.\r\n{ex.Message}", "طباعة");
+        }
+    }
+
+    private InvoiceRecord? SaveInvoice(bool showSuccess = true)
+    {
+        if (!TryValidateInvoice(out var missingField))
+        {
+            AppMessageDialog.Warning(this, $"برجاء إدخال {missingField}");
+            return null;
+        }
+
+        var subtotal = _lines.Sum(l => l.Total);
+        _ = TryParseMoney(_txtDiscount.Text, out var discountValue);
+        var discountUnit = _cmbDiscountUnit.SelectedItem?.ToString() ?? "%";
+        var discount = discountUnit == "%"
+            ? subtotal * discountValue / 100m
+            : discountValue;
+        var tax = 0m;
+        var grand = Math.Max(0, subtotal - discount + tax);
+        _ = TryParseMoney(_txtPaid.Text, out var paid);
+        if (paid > grand)
+        {
+            paid = grand;
+        }
+
+        var chassis = "";
+        if (_selectedCustomer is not null)
+        {
+            var carIndex = _cmbCarModel.Visible && _cmbCarModel.SelectedIndex >= 0
+                ? _cmbCarModel.SelectedIndex
+                : 0;
+            if (carIndex >= 0 && carIndex < _selectedCustomer.Cars.Count)
+            {
+                chassis = _selectedCustomer.Cars[carIndex].Vin;
+            }
+        }
+
+        var invoice = new InvoiceRecord
+        {
+            Number = InvoiceStore.NextNumber(),
+            CreatedAt = DateTime.Now,
+            CustomerName = _cmbCustomer.Text.Trim(),
+            Phone = _txtPhone.Text.Trim(),
+            Address = _txtAddress.Text.Trim(),
+            PlateLetters = _txtPlateLetters.Text.Trim(),
+            PlateNumber = _txtPlateNumber.Text.Trim(),
+            CarModel = GetCarModelText(),
+            ChassisNumber = string.IsNullOrWhiteSpace(chassis) ? "—" : chassis,
+            Odometer = _txtOdometer.Text.Trim(),
+            Technician = _cmbTechnician.Text.Trim(),
+            PaymentMethod = _cmbPayment.Text.Trim(),
+            Subtotal = subtotal,
+            Discount = discount,
+            DiscountUnit = discountUnit,
+            Tax = tax,
+            GrandTotal = grand,
+            Paid = paid,
+            Remaining = Math.Max(0, grand - paid),
+            Items = _lines.Select(l => new InvoiceItemRecord
+            {
+                Name = l.Name,
+                Qty = l.Qty,
+                UnitPrice = l.UnitPrice
+            }).ToList()
+        };
+
+        InvoiceStore.Add(invoice);
+
+        if (showSuccess)
+        {
+            AppMessageDialog.Success(this,
+                $"تم حفظ الفاتورة بنجاح.\r\nرقم الفاتورة: {invoice.Number}",
+                "حفظ");
+        }
+
+        return invoice;
     }
 
     private void RecalculateTotals()
