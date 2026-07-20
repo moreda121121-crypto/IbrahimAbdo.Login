@@ -163,15 +163,15 @@ internal sealed class CustomersForm : Form
 
         string[][] items =
         [
-            ["\uE80F", "لوحة التحكم", "dashboard"],
             ["\uE77B", "العملاء", "customers"],
-            ["\uE7EC", "السيارات", "vehicles"],
+            ["\uE80F", "إدارة الفواتير", "dashboard"],
+            ["\uE81E", "الأصناف", "items"],
             ["\uE90F", "الخدمات", "services"],
             ["\uE8A5", "فاتورة البيع", "invoice"],
+            ["\uE8CB", "فاتورة شراء", "purchase"],
             ["\uE8F1", "المخزون", "inventory"],
-            ["\uE718", "الفنيون", "techs"],
+            ["\uE718", "الفنيين", "techs"],
             ["\uE716", "المستخدمون", "users"],
-            ["\uE713", "الإعدادات", "settings"],
         ];
 
         foreach (var item in items)

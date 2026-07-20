@@ -42,6 +42,26 @@ internal static class InvoiceStore
 
     public static IReadOnlyList<InvoiceRecord> All => Items;
 
+    public static InvoiceRecord? Find(string id) =>
+        Items.FirstOrDefault(i => i.Id == id);
+
+    public static IEnumerable<InvoiceRecord> Search(string query)
+    {
+        IEnumerable<InvoiceRecord> q = Items.OrderByDescending(i => i.CreatedAt);
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return q;
+        }
+
+        query = query.Trim();
+        return q.Where(i =>
+            i.Number.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            i.CustomerName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            i.Phone.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            i.CarModel.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            $"{i.PlateLetters} {i.PlateNumber}".Contains(query, StringComparison.OrdinalIgnoreCase));
+    }
+
     public static void Load()
     {
         try

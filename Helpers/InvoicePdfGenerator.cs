@@ -13,13 +13,18 @@ namespace IbrahimAbdo.Login.Helpers;
 
 internal static class InvoicePdfGenerator
 {
-    public static string GenerateAndOpen(InvoiceRecord invoice)
+    public static string GenerateAndOpen(InvoiceRecord invoice) =>
+        Generate(invoice, openAfter: true);
+
+    /// <summary>Build the invoice PDF with the shared print template. Optionally open it.</summary>
+    public static string Generate(InvoiceRecord invoice, bool openAfter = true)
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
         var dir = Path.Combine(AppContext.BaseDirectory, "Invoices");
         Directory.CreateDirectory(dir);
-        var filePath = Path.Combine(dir, $"{invoice.Number}.pdf");
+        var safeNumber = string.Join("_", (invoice.Number ?? "invoice").Split(Path.GetInvalidFileNameChars()));
+        var filePath = Path.Combine(dir, $"{safeNumber}.pdf");
         var logo = LoadBlackAndWhiteLogoBytes();
         var qr = CreateQrPng($"INV|{invoice.Number}|{invoice.CustomerName}|{invoice.GrandTotal:0.00}");
         var rows = invoice.Items
@@ -63,35 +68,41 @@ internal static class InvoicePdfGenerator
             });
         }).GeneratePdf(filePath);
 
-        Process.Start(new ProcessStartInfo
+        if (openAfter)
         {
-            FileName = filePath,
-            UseShellExecute = true
-        });
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = filePath,
+                UseShellExecute = true
+            });
+        }
 
         return filePath;
     }
 
     private static void Header(IContainer container, InvoiceRecord invoice, byte[]? logo, byte[] qr)
     {
+        // Avoid nested Width/Height inside ConstantItem — that triggers QuestPDF conflicting size constraints.
         container.Row(row =>
         {
-            // Logo
-            row.ConstantItem(105).AlignMiddle().AlignLeft().Element(c =>
+            // Logo ~50% larger than original 100px
+            row.ConstantItem(150).Element(c =>
             {
-                if (logo is { Length: > 0 })
+                c.Height(150).Background(Colors.Black).Padding(4).Element(inner =>
                 {
-                    c.Width(100).Height(100).Image(logo).FitArea();
-                }
-                else
-                {
-                    c.Width(100).Height(100).Border(1).AlignCenter().AlignMiddle()
-                        .Text("IBRAHIM ABDO").Bold().FontSize(11);
-                }
+                    if (logo is { Length: > 0 })
+                    {
+                        inner.Image(logo).FitArea();
+                    }
+                    else
+                    {
+                        inner.AlignCenter().AlignMiddle().Text("IBRAHIM ABDO").Bold().FontSize(11);
+                    }
+                });
             });
 
             // Title + meta
-            row.RelativeItem().PaddingHorizontal(10).AlignMiddle().Column(c =>
+            row.RelativeItem().PaddingHorizontal(8).AlignMiddle().Column(c =>
             {
                 c.Item().AlignCenter().Text("INVOICE")
                     .Bold()
@@ -102,7 +113,7 @@ internal static class InvoicePdfGenerator
                     .FontSize(13)
                     .FontColor(Colors.Black);
 
-                c.Item().PaddingTop(8).AlignCenter().Width(260)
+                c.Item().PaddingTop(8)
                     .Border(1).BorderColor(Colors.Black)
                     .PaddingVertical(5).PaddingHorizontal(8)
                     .Column(meta =>
@@ -115,17 +126,20 @@ internal static class InvoicePdfGenerator
             });
 
             // QR
-            row.ConstantItem(105).AlignMiddle().AlignRight().Column(c =>
+            row.ConstantItem(100).Element(c =>
             {
-                c.Item().AlignRight().Width(90).Height(90).Image(qr).FitArea();
-                c.Item().PaddingTop(4).AlignRight().Width(90)
-                    .Background(Colors.Black)
-                    .PaddingVertical(4)
-                    .AlignCenter()
-                    .Text("SCAN ME")
-                    .FontColor(Colors.White)
-                    .FontSize(8)
-                    .Bold();
+                c.Column(col =>
+                {
+                    col.Item().Height(90).Image(qr).FitArea();
+                    col.Item().PaddingTop(4)
+                        .Background(Colors.Black)
+                        .PaddingVertical(4)
+                        .AlignCenter()
+                        .Text("SCAN ME")
+                        .FontColor(Colors.White)
+                        .FontSize(8)
+                        .Bold();
+                });
             });
         });
     }
@@ -364,11 +378,17 @@ internal static class InvoicePdfGenerator
 
     private static byte[]? LoadBlackAndWhiteLogoBytes()
     {
+        var invoiceLogoPath = Path.Combine(AppContext.BaseDirectory, "Assets", "logo-invoice.png");
         var bwPath = Path.Combine(AppContext.BaseDirectory, "Assets", "logo-ibrahim-bw.png");
         var colorPath = Path.Combine(AppContext.BaseDirectory, "Assets", "logo-ibrahim.png");
 
         try
         {
+            if (File.Exists(invoiceLogoPath))
+            {
+                return File.ReadAllBytes(invoiceLogoPath);
+            }
+
             if (File.Exists(bwPath))
             {
                 return File.ReadAllBytes(bwPath);

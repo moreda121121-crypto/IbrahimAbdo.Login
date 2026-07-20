@@ -37,17 +37,7 @@ internal sealed class SalesInvoiceForm : Form
     private CustomerRecord? _selectedCustomer;
     private bool _suppressVehicleSync;
 
-    private readonly List<InvoiceLine> _lines =
-    [
-        new(1, "زيت موتور", 2, 450.00m),
-        new(2, "فلتر زيت", 1, 120.00m),
-        new(3, "بوجيهات", 4, 85.00m),
-        new(4, "فلتر هواء", 1, 180.00m),
-        new(5, "غسيل موتور", 1, 250.00m),
-        new(6, "فحص كمبيوتر", 1, 300.00m),
-        new(7, "تيل فرامل أمامي", 1, 950.00m),
-        new(8, "مياه رادياتير", 2, 75.00m),
-    ];
+    private readonly List<InvoiceLine> _lines = [];
 
     public SalesInvoiceForm(bool embedded = false)
     {
@@ -79,6 +69,9 @@ internal sealed class SalesInvoiceForm : Form
 
         CustomerStore.Load();
         InvoiceStore.Load();
+        ProductStore.Load();
+        TechnicianStore.Load();
+
         BuildUi();
         if (!_embedded)
         {
@@ -205,15 +198,15 @@ internal sealed class SalesInvoiceForm : Form
         // glyph, label — matches reference order & style
         string[][] items =
         [
-            ["\uE80F", "لوحة التحكم", "dashboard"],
             ["\uE77B", "العملاء", "customers"],
-            ["\uE7EC", "السيارات", "vehicles"],
+            ["\uE80F", "إدارة الفواتير", "dashboard"],
+            ["\uE81E", "الأصناف", "items"],
             ["\uE90F", "الخدمات", "services"],
             ["\uE8A5", "فاتورة البيع", "invoice"],
+            ["\uE8CB", "فاتورة شراء", "purchase"],
             ["\uE8F1", "المخزون", "inventory"],
-            ["\uE718", "الفنيون", "techs"],
+            ["\uE718", "الفنيين", "techs"],
             ["\uE716", "المستخدمون", "users"],
-            ["\uE713", "الإعدادات", "settings"],
         ];
 
         foreach (var item in items)
@@ -717,13 +710,44 @@ internal sealed class SalesInvoiceForm : Form
     private Control BuildTechnicianCard()
     {
         var (card, body) = CreateCard("الفني المسؤول");
-        _cmbTechnician = CreateCombo("أحمد محمد", "محمد علي", "إبراهيم حسن", "محمود السيد");
+        _cmbTechnician = CreateCombo(TechnicianStore.Names().ToArray());
         _cmbTechnician.SelectedIndex = -1;
         _cmbPayment = CreateCombo("نقدي", "انستا باي", "فيزا");
         _cmbPayment.SelectedIndex = -1;
         body.Controls.Add(CreateField("اختر الفني", _cmbTechnician), 0, 0);
         body.Controls.Add(CreateField("طريقة الدفع", _cmbPayment), 0, 1);
         return card;
+    }
+
+    /// <summary>Refresh technician dropdown after technicians are added/removed.</summary>
+    public void ReloadTechnicians()
+    {
+        TechnicianStore.Load();
+        if (_cmbTechnician is null)
+        {
+            return;
+        }
+
+        var selected = _cmbTechnician.Text;
+        _cmbTechnician.Items.Clear();
+        foreach (var name in TechnicianStore.Names())
+        {
+            _cmbTechnician.Items.Add(name);
+        }
+
+        if (!string.IsNullOrWhiteSpace(selected))
+        {
+            var idx = _cmbTechnician.Items.IndexOf(selected);
+            _cmbTechnician.SelectedIndex = idx >= 0 ? idx : -1;
+            if (idx < 0)
+            {
+                _cmbTechnician.Text = selected;
+            }
+        }
+        else
+        {
+            _cmbTechnician.SelectedIndex = -1;
+        }
     }
 
     private static (Guna2Panel Card, TableLayoutPanel Body) CreateCard(string title)
@@ -1428,7 +1452,38 @@ internal sealed class SalesInvoiceForm : Form
 
     private void AddLine()
     {
-        _lines.Add(new InvoiceLine(_lines.Count + 1, "صنف جديد", 1, 100m));
+        using var dlg = new SelectProductDialog();
+        if (dlg.ShowDialog(this) != DialogResult.OK || dlg.Selected is null)
+        {
+            return;
+        }
+
+        var product = dlg.Selected;
+        // Merge qty if same product already on the invoice
+        var existing = _lines.FindIndex(l =>
+            (!string.IsNullOrEmpty(l.ProductId) && l.ProductId == product.Id) ||
+            l.Name.Equals(product.Name, StringComparison.OrdinalIgnoreCase));
+        if (existing >= 0)
+        {
+            var line = _lines[existing];
+            if (line.Qty + 1 > product.Quantity)
+            {
+                AppMessageDialog.Warning(this, $"الكمية المتاحة من «{product.Name}» هي {product.Quantity} فقط");
+                return;
+            }
+
+            _lines[existing] = line with { Qty = line.Qty + 1 };
+        }
+        else
+        {
+            _lines.Add(new InvoiceLine(
+                _lines.Count + 1,
+                product.Name,
+                1,
+                product.SellingPrice,
+                product.Id));
+        }
+
         LoadGrid();
         RecalculateTotals();
     }
@@ -1662,7 +1717,30 @@ internal sealed class SalesInvoiceForm : Form
             }).ToList()
         };
 
+        // Validate stock for catalog-linked lines before committing
+        foreach (var line in _lines)
+        {
+            var product = (!string.IsNullOrWhiteSpace(line.ProductId)
+                              ? ProductStore.Find(line.ProductId)
+                              : null)
+                          ?? ProductStore.FindByCodeOrName(line.Name);
+            if (product is not null && product.Quantity < line.Qty)
+            {
+                AppMessageDialog.Warning(this,
+                    $"الكمية غير كافية للصنف «{line.Name}» (المتاح: {product.Quantity})");
+                return null;
+            }
+        }
+
         InvoiceStore.Add(invoice);
+
+        foreach (var line in _lines)
+        {
+            if (!ProductStore.ApplySale(line.ProductId, line.Name, line.Qty, out var stockError))
+            {
+                AppMessageDialog.Warning(this, stockError ?? "تعذر تحديث المخزون");
+            }
+        }
 
         if (showSuccess)
         {
@@ -1725,7 +1803,7 @@ internal sealed class SalesInvoiceForm : Form
         base.Dispose(disposing);
     }
 
-    private sealed record InvoiceLine(int Id, string Name, int Qty, decimal UnitPrice)
+    private sealed record InvoiceLine(int Id, string Name, int Qty, decimal UnitPrice, string? ProductId = null)
     {
         public decimal Total => Qty * UnitPrice;
     }
