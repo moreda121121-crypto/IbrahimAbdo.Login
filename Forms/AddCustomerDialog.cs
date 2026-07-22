@@ -14,14 +14,18 @@ internal sealed class AddCustomerDialog : Form
     private readonly Guna2TextBox _txtAddress;
     private readonly Guna2TextBox _txtNotes;
     private readonly List<CarFormBlock> _carBlocks = [];
+    private readonly CustomerRecord? _existing;
 
     public CustomerRecord? Result { get; private set; }
 
-    public AddCustomerDialog()
+    public AddCustomerDialog(CustomerRecord? existing = null)
     {
+        _existing = existing;
+        var isEdit = existing is not null;
         SuspendLayout();
+        WindowTheme.Attach(this);
         AutoScaleMode = AutoScaleMode.Dpi;
-        Text = "إضافة عميل جديد";
+        Text = isEdit ? "تعديل بيانات العميل" : "إضافة عميل جديد";
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterParent;
         MaximizeBox = false;
@@ -48,7 +52,7 @@ internal sealed class AddCustomerDialog : Form
         var title = new Label
         {
             Dock = DockStyle.Fill,
-            Text = "إضافة عميل جديد",
+            Text = isEdit ? "تعديل بيانات العميل" : "إضافة عميل جديد",
             Font = InvoiceTheme.TitleFont,
             ForeColor = InvoiceTheme.Gold,
             TextAlign = ContentAlignment.MiddleCenter
@@ -141,7 +145,7 @@ internal sealed class AddCustomerDialog : Form
             BackColor = Color.Transparent,
             Padding = new Padding(0, 8, 0, 0)
         };
-        var btnSave = CreateGoldButton("حفظ العميل", "\uE74E");
+        var btnSave = CreateGoldButton(isEdit ? "حفظ التعديلات" : "حفظ العميل", "\uE74E");
         btnSave.Click += (_, _) => Save();
         var btnCancel = CreateOutlineButton("إلغاء");
         btnCancel.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
@@ -153,27 +157,47 @@ internal sealed class AddCustomerDialog : Form
         root.Controls.Add(footer, 0, 2);
         Controls.Add(root);
 
-        AddCarBlock();
+        if (existing is not null)
+        {
+            _txtName.Text = existing.Name;
+            _txtPhone.Text = existing.Phone;
+            _txtEmail.Text = existing.Email;
+            _txtAddress.Text = existing.Address;
+            _txtNotes.Text = existing.Notes;
+
+            if (existing.Cars.Count == 0)
+            {
+                AddCarBlock();
+            }
+            else
+            {
+                foreach (var car in existing.Cars)
+                {
+                    AddCarBlock(car);
+                }
+            }
+        }
+        else
+        {
+            AddCarBlock();
+        }
+
         ResumeLayout(true);
     }
 
-    private void AddCarBlock()
+    private void AddCarBlock(CarRecord? car = null)
     {
         var index = _carBlocks.Count + 1;
-        var block = new CarFormBlock(index);
+        var block = new CarFormBlock(index, car);
         _carBlocks.Add(block);
         _carsHost.Controls.Add(block.Panel);
-        if (_carBlocks.Count > 1)
-        {
-            // update section title feel via first label inside panel
-        }
     }
 
     private void Save()
     {
         if (string.IsNullOrWhiteSpace(_txtName.Text) || string.IsNullOrWhiteSpace(_txtPhone.Text))
         {
-            MessageBox.Show(this, "اسم العميل ورقم الهاتف مطلوبان.", "تنبيه", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            AppMessageDialog.Warning(this, "اسم العميل ورقم الهاتف مطلوبان.");
             return;
         }
 
@@ -182,7 +206,7 @@ internal sealed class AddCustomerDialog : Form
         {
             if (!block.TryBuild(out var car, out var error))
             {
-                MessageBox.Show(this, error, "تنبيه", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                AppMessageDialog.Warning(this, error);
                 return;
             }
 
@@ -191,19 +215,23 @@ internal sealed class AddCustomerDialog : Form
 
         if (cars.Count == 0)
         {
-            MessageBox.Show(this, "أضف سيارة واحدة على الأقل.", "تنبيه", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            AppMessageDialog.Warning(this, "أضف سيارة واحدة على الأقل.");
             return;
         }
 
         Result = new CustomerRecord
         {
+            Id = _existing?.Id ?? Guid.NewGuid().ToString("N"),
             Name = _txtName.Text.Trim(),
             Phone = _txtPhone.Text.Trim(),
             Email = _txtEmail.Text.Trim(),
             Address = _txtAddress.Text.Trim(),
             Notes = _txtNotes.Text.Trim(),
-            RegisteredAt = DateTime.Today,
-            Cars = cars
+            RegisteredAt = _existing?.RegisteredAt ?? DateTime.Today,
+            IsVip = _existing?.IsVip ?? false,
+            Cars = cars,
+            Invoices = _existing?.Invoices ?? [],
+            Services = _existing?.Services ?? []
         };
 
         DialogResult = DialogResult.OK;
@@ -366,7 +394,7 @@ internal sealed class AddCustomerDialog : Form
         private readonly Guna2ComboBox _fuel;
         private readonly Guna2ComboBox _trans;
 
-        public CarFormBlock(int index)
+        public CarFormBlock(int index, CarRecord? car = null)
         {
             Panel = new Panel
             {
@@ -422,6 +450,35 @@ internal sealed class AddCustomerDialog : Form
 
             Panel.Controls.Add(grid);
             Panel.Controls.Add(title);
+
+            if (car is not null)
+            {
+                _plate.Text = car.PlateNumber;
+                SelectOrAdd(_brand, car.Brand);
+                SelectOrAdd(_model, car.Model);
+                SelectOrAdd(_year, car.Year.ToString());
+                SelectOrAdd(_color, car.Color);
+                _vin.Text = car.Vin;
+                _mileage.Text = car.Mileage > 0 ? car.Mileage.ToString() : "";
+                SelectOrAdd(_fuel, car.FuelType);
+                SelectOrAdd(_trans, car.Transmission);
+            }
+        }
+
+        private static void SelectOrAdd(Guna2ComboBox combo, string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return;
+            }
+
+            var idx = combo.Items.IndexOf(value);
+            if (idx < 0)
+            {
+                idx = combo.Items.Add(value);
+            }
+
+            combo.SelectedIndex = idx;
         }
 
         public bool TryBuild(out CarRecord? car, out string error)

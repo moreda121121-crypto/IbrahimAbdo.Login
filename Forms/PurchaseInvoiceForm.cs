@@ -24,6 +24,10 @@ internal sealed class PurchaseInvoiceForm : Form
     private Guna2TextBox _txtPaid = null!;
     private Guna2ComboBox _cmbDiscountUnit = null!;
     private Guna2ComboBox _cmbPayment = null!;
+    private Guna2ComboBox _supplierCombo = null!;
+    private Control _paidRow = null!;
+    private Control _remainingRow = null!;
+    private TableLayoutPanel _summaryBody = null!;
     private DataGridView _grid = null!;
     private Bitmap _editIcon = null!;
     private Bitmap _deleteIcon = null!;
@@ -37,6 +41,7 @@ internal sealed class PurchaseInvoiceForm : Form
     {
         _embedded = embedded;
         SuspendLayout();
+        WindowTheme.Attach(this);
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = InvoiceTheme.Background;
@@ -57,6 +62,7 @@ internal sealed class PurchaseInvoiceForm : Form
 
         ProductStore.Load();
         PurchaseInvoiceStore.Load();
+        SupplierStore.Load();
         _editIcon = GlyphHelper.Create("\uE70F", InvoiceTheme.Gold, 14);
         _deleteIcon = GlyphHelper.Create("\uE74D", InvoiceTheme.Danger, 14);
 
@@ -70,6 +76,25 @@ internal sealed class PurchaseInvoiceForm : Form
         _clockTimer.Start();
         UpdateClock();
         ResumeLayout(true);
+
+        HandleCreated += (_, _) => BeginInvoke(new Action(FixInitialLayout));
+        VisibleChanged += (_, _) => { if (Visible) BeginInvoke(new Action(FixInitialLayout)); };
+    }
+
+    private void FixInitialLayout()
+    {
+        foreach (var input in new Control[] { _txtDiscount, _cmbDiscountUnit, _txtPaid })
+        {
+            if (input is null)
+            {
+                continue;
+            }
+
+            input.MinimumSize = new Size(0, 38);
+            input.Height = 38;
+        }
+
+        PerformLayout();
     }
 
     private Control BuildMain()
@@ -83,7 +108,7 @@ internal sealed class PurchaseInvoiceForm : Form
             Padding = new Padding(14, 8, 14, 10)
         };
         main.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
-        main.RowStyles.Add(new RowStyle(SizeType.Absolute, 160));
+        main.RowStyles.Add(new RowStyle(SizeType.Absolute, 190));
         main.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
         main.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
         main.Controls.Add(BuildTopBar(), 0, 0);
@@ -114,7 +139,6 @@ internal sealed class PurchaseInvoiceForm : Form
         };
         _lblDate = new Label { AutoSize = true, ForeColor = InvoiceTheme.Muted, Font = InvoiceTheme.SmallFont, Margin = new Padding(8, 8, 12, 0) };
         _lblTime = new Label { AutoSize = true, ForeColor = InvoiceTheme.Muted, Font = InvoiceTheme.SmallFont, Margin = new Padding(8, 8, 8, 0) };
-        right.Controls.Add(CreateChrome("\uE7E7"));
         right.Controls.Add(_lblDate);
         right.Controls.Add(CreateChrome("\uE121"));
         right.Controls.Add(_lblTime);
@@ -137,15 +161,35 @@ internal sealed class PurchaseInvoiceForm : Form
             ShadowDecoration = { Enabled = true, Depth = 10, Color = Color.Black, BorderRadius = InvoiceTheme.Radius }
         };
 
-        var title = new Label
+        var header = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 28,
+            Height = 34,
+            BackColor = Color.Transparent
+        };
+        var title = new Label
+        {
+            Dock = DockStyle.Fill,
             Text = "بيانات المورد",
             ForeColor = InvoiceTheme.Gold,
             Font = InvoiceTheme.SectionFont,
             TextAlign = ContentAlignment.MiddleLeft
         };
+        var btnAddSupplier = new Guna2Button
+        {
+            Dock = DockStyle.Right,
+            Width = 130,
+            Text = "+ إضافة مورد",
+            Font = InvoiceTheme.SmallFont,
+            ForeColor = Color.Black,
+            FillColor = InvoiceTheme.Gold,
+            BorderRadius = 8,
+            Cursor = Cursors.Hand,
+            HoverState = { FillColor = InvoiceTheme.GoldDark, ForeColor = Color.Black }
+        };
+        btnAddSupplier.Click += (_, _) => OpenAddSupplier();
+        header.Controls.Add(title);
+        header.Controls.Add(btnAddSupplier);
 
         var grid = new TableLayoutPanel
         {
@@ -165,27 +209,58 @@ internal sealed class PurchaseInvoiceForm : Form
 
         _txtSupplier = CreateInput("اسم المورد");
         _txtPhone = CreateInput("رقم الهاتف");
-        _cmbPayment = CreateCombo("نقدي", "تحويل", "آجل");
+        _cmbPayment = CreateCombo("نقدي", "انستا باي", "فيزا", "أجل", "فودافون كاش");
         _txtNotes = CreateInput("ملاحظات");
 
-        var supplierCombo = CreateCombo(ProductStore.Suppliers);
-        supplierCombo.SelectedIndexChanged += (_, _) =>
-        {
-            if (supplierCombo.SelectedItem is string s && !string.IsNullOrWhiteSpace(s))
-            {
-                _txtSupplier.Text = s;
-            }
-        };
+        _supplierCombo = CreateCombo(SupplierStore.Names().ToArray());
+        _supplierCombo.SelectedIndexChanged += (_, _) => ApplySupplierSelection();
 
         grid.Controls.Add(WrapField("اسم المورد", _txtSupplier), 0, 0);
         grid.Controls.Add(WrapField("الهاتف", _txtPhone), 1, 0);
         grid.Controls.Add(WrapField("طريقة الدفع", _cmbPayment), 2, 0);
         grid.Controls.Add(WrapField("ملاحظات", _txtNotes), 3, 0);
-        grid.Controls.Add(WrapField("اختيار مورد سريع", supplierCombo), 0, 1);
+        grid.Controls.Add(WrapField("اختيار مورد سريع", _supplierCombo), 0, 1);
 
         card.Controls.Add(grid);
-        card.Controls.Add(title);
+        card.Controls.Add(header);
         return card;
+    }
+
+    private void ApplySupplierSelection()
+    {
+        if (_supplierCombo.SelectedItem is string s && !string.IsNullOrWhiteSpace(s))
+        {
+            _txtSupplier.Text = s;
+            var rec = SupplierStore.FindByName(s);
+            if (rec is not null && !string.IsNullOrWhiteSpace(rec.Phone))
+            {
+                _txtPhone.Text = rec.Phone;
+            }
+        }
+    }
+
+    private void RefreshSupplierCombo()
+    {
+        _supplierCombo.Items.Clear();
+        foreach (var name in SupplierStore.Names())
+        {
+            _supplierCombo.Items.Add(name);
+        }
+    }
+
+    private void OpenAddSupplier()
+    {
+        using var dlg = new AddSupplierDialog();
+        if (dlg.ShowDialog(this) != DialogResult.OK || dlg.Result is null)
+        {
+            return;
+        }
+
+        SupplierStore.Add(dlg.Result);
+        RefreshSupplierCombo();
+        _supplierCombo.SelectedItem = dlg.Result.Name;
+        _txtSupplier.Text = dlg.Result.Name;
+        _txtPhone.Text = dlg.Result.Phone;
     }
 
     private Control BuildCenter()
@@ -232,7 +307,7 @@ internal sealed class PurchaseInvoiceForm : Form
             Dock = DockStyle.Fill,
             BackgroundColor = InvoiceTheme.Card,
             BorderStyle = BorderStyle.None,
-            CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
+            CellBorderStyle = DataGridViewCellBorderStyle.Single,
             ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None,
             EnableHeadersVisualStyles = false,
             GridColor = InvoiceTheme.CardBorder,
@@ -244,25 +319,31 @@ internal sealed class PurchaseInvoiceForm : Form
             RowTemplate = { Height = 34 },
             Font = InvoiceTheme.SmallFont,
             ForeColor = InvoiceTheme.White,
+            RightToLeft = RightToLeft.Yes,
             DefaultCellStyle = new DataGridViewCellStyle
             {
                 BackColor = InvoiceTheme.Card,
                 ForeColor = InvoiceTheme.White,
                 SelectionBackColor = Color.FromArgb(48, InvoiceTheme.Gold),
-                SelectionForeColor = InvoiceTheme.White
+                SelectionForeColor = InvoiceTheme.White,
+                Alignment = DataGridViewContentAlignment.MiddleCenter
             },
             AlternatingRowsDefaultCellStyle = new DataGridViewCellStyle
             {
                 BackColor = InvoiceTheme.RowAlt,
                 ForeColor = InvoiceTheme.White,
                 SelectionBackColor = Color.FromArgb(48, InvoiceTheme.Gold),
-                SelectionForeColor = InvoiceTheme.White
+                SelectionForeColor = InvoiceTheme.White,
+                Alignment = DataGridViewContentAlignment.MiddleCenter
             },
             ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle
             {
-                BackColor = Color.FromArgb(30, 30, 30),
-                ForeColor = InvoiceTheme.Gold,
-                Font = InvoiceTheme.TableHeaderFont
+                BackColor = InvoiceTheme.Gold,
+                ForeColor = Color.Black,
+                SelectionBackColor = InvoiceTheme.Gold,
+                SelectionForeColor = Color.Black,
+                Font = InvoiceTheme.TableHeaderFont,
+                Alignment = DataGridViewContentAlignment.MiddleCenter
             },
             ColumnHeadersHeight = 34
         };
@@ -325,13 +406,14 @@ internal sealed class PurchaseInvoiceForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 8,
+            RowCount = 5,
             BackColor = Color.Transparent
         };
-        for (var i = 0; i < 8; i++)
-        {
-            body.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
-        }
+        body.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));  // الإجمالي الفرعي
+        body.RowStyles.Add(new RowStyle(SizeType.Absolute, 66));  // الخصم
+        body.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));  // الإجمالي
+        body.RowStyles.Add(new RowStyle(SizeType.Absolute, 66));  // المدفوع
+        body.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));  // المتبقي
 
         _lblSubtotal = SummaryValue();
         _lblGrandTotal = SummaryValue(true);
@@ -343,20 +425,53 @@ internal sealed class PurchaseInvoiceForm : Form
         _txtPaid = CreateInput("0");
         _txtPaid.TextChanged += (_, _) => RecalculateTotals();
 
+        foreach (var input in new Control[] { _txtDiscount, _cmbDiscountUnit, _txtPaid })
+        {
+            input.MinimumSize = new Size(0, 38);
+            input.Height = 38;
+        }
+
         body.Controls.Add(SummaryRow("الإجمالي الفرعي", _lblSubtotal), 0, 0);
-        var discRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2 };
+        var discRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Margin = new Padding(0) };
         discRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55F));
         discRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45F));
         discRow.Controls.Add(_txtDiscount, 0, 0);
         discRow.Controls.Add(_cmbDiscountUnit, 1, 0);
         body.Controls.Add(Labeled("الخصم", discRow), 0, 1);
         body.Controls.Add(SummaryRow("الإجمالي", _lblGrandTotal), 0, 2);
-        body.Controls.Add(Labeled("المدفوع", _txtPaid), 0, 3);
-        body.Controls.Add(SummaryRow("المتبقي", _lblRemaining), 0, 4);
+        _paidRow = Labeled("المدفوع", _txtPaid);
+        _remainingRow = SummaryRow("المتبقي", _lblRemaining);
+        body.Controls.Add(_paidRow, 0, 3);
+        body.Controls.Add(_remainingRow, 0, 4);
+        _summaryBody = body;
+
+        _cmbPayment.SelectedIndexChanged += (_, _) => UpdatePaidVisibility();
+        _cmbPayment.TextChanged += (_, _) => UpdatePaidVisibility();
+        UpdatePaidVisibility();
 
         card.Controls.Add(body);
         card.Controls.Add(title);
         return card;
+    }
+
+    private void UpdatePaidVisibility()
+    {
+        var credit = string.Equals(_cmbPayment?.Text?.Trim(), "أجل", StringComparison.Ordinal);
+        if (_paidRow is not null)
+        {
+            _paidRow.Visible = credit;
+        }
+
+        if (_remainingRow is not null)
+        {
+            _remainingRow.Visible = credit;
+        }
+
+        if (_summaryBody is not null)
+        {
+            _summaryBody.RowStyles[3].Height = credit ? 66 : 0;
+            _summaryBody.RowStyles[4].Height = credit ? 40 : 0;
+        }
     }
 
     private Control BuildBottomActions()
@@ -364,18 +479,19 @@ internal sealed class PurchaseInvoiceForm : Form
         var bar = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 3,
+            ColumnCount = 2,
             RowCount = 1,
-            BackColor = Color.Transparent
+            BackColor = Color.Transparent,
+            Padding = new Padding(4, 6, 4, 0),
+            RightToLeft = RightToLeft.No
         };
-        for (var i = 0; i < 3; i++)
+        for (var i = 0; i < 2; i++)
         {
-            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
+            bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
         }
 
         bar.Controls.Add(WrapBottom(CreateBottom("جديد", "\uE710", (_, _) => ClearForm())), 0, 0);
-        bar.Controls.Add(WrapBottom(CreateBottom("حفظ الفاتورة", "\uE74E", (_, _) => SavePurchase())), 1, 0);
-        bar.Controls.Add(WrapBottom(CreateBottom("حفظ وزيادة المخزون", "\uE8F1", (_, _) => SavePurchase())), 2, 0);
+        bar.Controls.Add(WrapBottom(CreateBottom("حفظ وزيادة المخزون", "\uE8F1", (_, _) => SavePurchase())), 1, 0);
         return bar;
     }
 
@@ -499,7 +615,12 @@ internal sealed class PurchaseInvoiceForm : Form
         var discount = discountUnit == "%" ? subtotal * discountValue / 100m : discountValue;
         var grand = Math.Max(0, subtotal - discount);
         _ = decimal.TryParse(_txtPaid.Text.Trim(), out var paid);
-        if (paid > grand)
+        var credit = string.Equals(_cmbPayment.Text?.Trim(), "أجل", StringComparison.Ordinal);
+        if (!credit)
+        {
+            paid = grand;
+        }
+        else if (paid > grand)
         {
             paid = grand;
         }
@@ -574,7 +695,12 @@ internal sealed class PurchaseInvoiceForm : Form
             : discountValue;
         var grand = Math.Max(0, subtotal - discount);
         _ = decimal.TryParse(_txtPaid?.Text, out var paid);
-        if (paid > grand)
+        var credit = string.Equals(_cmbPayment?.Text?.Trim(), "أجل", StringComparison.Ordinal);
+        if (!credit)
+        {
+            paid = grand;
+        }
+        else if (paid > grand)
         {
             paid = grand;
         }
@@ -723,30 +849,45 @@ internal sealed class PurchaseInvoiceForm : Form
 
     private static Guna2Button CreateBottom(string text, string glyph, EventHandler onClick)
     {
+        var iconNormal = GlyphHelper.Create(glyph, InvoiceTheme.White, 20);
+        var iconHover = GlyphHelper.Create(glyph, Color.Black, 20);
         var btn = new Guna2Button
         {
-            Text = text,
-            Font = InvoiceTheme.MenuFont,
-            Dock = DockStyle.Fill,
-            BorderRadius = 10,
-            FillColor = InvoiceTheme.Gold,
-            ForeColor = Color.Black,
+            Text = "  " + text,
+            Font = new Font(InvoiceTheme.Family.FontFamily, 12F, FontStyle.Bold, GraphicsUnit.Point),
+            ForeColor = InvoiceTheme.White,
+            FillColor = InvoiceTheme.Card,
+            BorderColor = Color.FromArgb(70, 70, 70),
+            BorderThickness = 1,
+            BorderRadius = InvoiceTheme.Radius,
+            Height = 46,
+            MinimumSize = new Size(140, 46),
             Cursor = Cursors.Hand,
-            Image = GlyphHelper.Create(glyph, Color.Black, 16),
-            ImageSize = new Size(16, 16),
+            Animated = true,
+            Image = iconNormal,
+            ImageSize = new Size(20, 20),
             ImageAlign = HorizontalAlignment.Left,
-            HoverState = { FillColor = InvoiceTheme.GoldDark, ForeColor = Color.Black }
+            TextAlign = HorizontalAlignment.Center,
+            HoverState =
+            {
+                FillColor = InvoiceTheme.Gold,
+                BorderColor = InvoiceTheme.Gold,
+                ForeColor = Color.Black
+            },
+            PressedColor = InvoiceTheme.GoldDark,
+            RightToLeft = RightToLeft.Yes
         };
+        btn.MouseEnter += (_, _) => btn.Image = iconHover;
+        btn.MouseLeave += (_, _) => btn.Image = iconNormal;
         btn.Click += onClick;
         return btn;
     }
 
     private static Control WrapBottom(Control btn)
     {
-        var p = new Panel { Dock = DockStyle.Fill, Padding = new Padding(6, 8, 6, 4), BackColor = Color.Transparent };
         btn.Dock = DockStyle.Fill;
-        p.Controls.Add(btn);
-        return p;
+        btn.Margin = new Padding(5, 0, 5, 0);
+        return btn;
     }
 
     private static Guna2Button CreateChrome(string glyph) =>

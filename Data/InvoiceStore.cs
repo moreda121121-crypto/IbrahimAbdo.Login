@@ -23,10 +23,12 @@ internal sealed class InvoiceRecord
     public string Odometer { get; set; } = "";
     public string Technician { get; set; } = "";
     public string PaymentMethod { get; set; } = "";
+    public string Notes { get; set; } = "";
     public decimal Subtotal { get; set; }
     public decimal Discount { get; set; }
     public string DiscountUnit { get; set; } = "%";
     public decimal Tax { get; set; }
+    public decimal LaborFee { get; set; }
     public decimal GrandTotal { get; set; }
     public decimal Paid { get; set; }
     public decimal Remaining { get; set; }
@@ -44,6 +46,9 @@ internal static class InvoiceStore
 
     public static InvoiceRecord? Find(string id) =>
         Items.FirstOrDefault(i => i.Id == id);
+
+    public static InvoiceRecord? FindByNumber(string number) =>
+        Items.FirstOrDefault(i => string.Equals(i.Number?.Trim(), number?.Trim(), StringComparison.OrdinalIgnoreCase));
 
     public static IEnumerable<InvoiceRecord> Search(string query)
     {

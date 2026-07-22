@@ -11,6 +11,7 @@ internal sealed partial class LoginForm : Form
     public LoginForm()
     {
         InitializeComponent();
+        WindowTheme.Attach(this);
         WireEvents();
         ApplyIconGlyphs();
     }
@@ -25,7 +26,7 @@ internal sealed partial class LoginForm : Form
         _txtPassword.KeyDown += OnPasswordKeyDown;
         _txtPassword.IconRightClick += (_, _) => TogglePasswordVisibility();
         _lnkForgotPassword.LinkClicked += (_, _) =>
-            MessageBox.Show(this, "Please contact your system administrator to reset your password.", "Forgot Password", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            AppMessageDialog.Info(this, "Please contact your system administrator to reset your password.", "Forgot Password");
 
         KeyDown += (_, e) =>
         {
@@ -80,12 +81,9 @@ internal sealed partial class LoginForm : Form
         var imagePath = Path.Combine(AppContext.BaseDirectory, "Assets", "Rest finish.png");
         if (!File.Exists(imagePath))
         {
-            MessageBox.Show(
-                this,
+            AppMessageDialog.Warning(this,
                 "Background image not found.\r\n\r\nExpected path:\r\nAssets\\Rest finish.png",
-                "Background Image",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning);
+                "Background Image");
             return;
         }
 
@@ -98,7 +96,7 @@ internal sealed partial class LoginForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, $"Unable to load background image.\r\n\r\n{ex.Message}", "Background Image", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            AppMessageDialog.Error(this, $"Unable to load background image.\r\n\r\n{ex.Message}", "Background Image");
         }
     }
 
@@ -179,14 +177,14 @@ internal sealed partial class LoginForm : Form
 
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
         {
-            MessageBox.Show(this, "Please enter your username and password.", "Login", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            AppMessageDialog.Warning(this, "Please enter your username and password.", "Login");
             return;
         }
 
         UserStore.Load();
         if (!UserStore.Validate(username, password))
         {
-            MessageBox.Show(this, "Invalid username or password.", "Login", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            AppMessageDialog.Error(this, "Invalid username or password.", "Login");
             return;
         }
 

@@ -15,6 +15,7 @@ internal sealed class AddTechnicianDialog : Form
     public AddTechnicianDialog()
     {
         SuspendLayout();
+        WindowTheme.Attach(this);
         AutoScaleMode = AutoScaleMode.Dpi;
         Text = "إضافة فني";
         FormBorderStyle = FormBorderStyle.FixedDialog;

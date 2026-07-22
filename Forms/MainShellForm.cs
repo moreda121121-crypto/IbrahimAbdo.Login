@@ -18,6 +18,7 @@ internal sealed class MainShellForm : Form
     public MainShellForm()
     {
         SuspendLayout();
+        WindowTheme.Attach(this);
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = InvoiceTheme.Background;
@@ -88,7 +89,7 @@ internal sealed class MainShellForm : Form
                 "inventory" => "المخزون",
                 _ => key
             };
-            MessageBox.Show(this, $"صفحة «{label}» قريباً.", "قريباً", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            AppMessageDialog.Info(this, $"صفحة «{label}» قريباً.", "قريباً");
             return;
         }
 
@@ -130,6 +131,7 @@ internal sealed class MainShellForm : Form
         }
         else if (page is SalesInvoiceForm invoicePage)
         {
+            invoicePage.ReloadCustomers();
             invoicePage.ReloadTechnicians();
         }
 

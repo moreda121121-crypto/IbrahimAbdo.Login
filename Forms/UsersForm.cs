@@ -23,6 +23,7 @@ internal sealed class UsersForm : Form
     {
         _embedded = embedded;
         SuspendLayout();
+        WindowTheme.Attach(this);
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = InvoiceTheme.Background;
@@ -93,7 +94,6 @@ internal sealed class UsersForm : Form
         };
         _lblDate = new Label { AutoSize = true, ForeColor = InvoiceTheme.Muted, Font = InvoiceTheme.SmallFont, Margin = new Padding(8, 8, 12, 0) };
         _lblTime = new Label { AutoSize = true, ForeColor = InvoiceTheme.Muted, Font = InvoiceTheme.SmallFont, Margin = new Padding(8, 8, 8, 0) };
-        right.Controls.Add(CreateChromeIcon("\uE7E7"));
         right.Controls.Add(_lblDate);
         right.Controls.Add(CreateChromeIcon("\uE121"));
         right.Controls.Add(_lblTime);
@@ -299,11 +299,11 @@ internal sealed class UsersForm : Form
 
         if (UserStore.TotalUsers <= 1)
         {
-            MessageBox.Show(this, "لا يمكن حذف آخر مستخدم في النظام.", "تنبيه", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            AppMessageDialog.Warning(this, "لا يمكن حذف آخر مستخدم في النظام.");
             return;
         }
 
-        if (MessageBox.Show(this, $"حذف المستخدم «{user.DisplayName}»؟", "تأكيد", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+        if (AppMessageDialog.Confirm(this, $"حذف المستخدم «{user.DisplayName}»؟"))
         {
             UserStore.Remove(user.Id);
             RefreshData();
@@ -317,11 +317,8 @@ internal sealed class UsersForm : Form
         {
             UserStore.Add(dlg.Result);
             RefreshData();
-            MessageBox.Show(this,
-                $"تم إنشاء الحساب بنجاح.\r\n\r\nاسم الحساب: {dlg.Result.Username}",
-                "نجاح",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+            AppMessageDialog.Success(this,
+                $"تم إنشاء الحساب بنجاح.\r\n\r\nاسم الحساب: {dlg.Result.Username}");
         }
     }
 
@@ -332,7 +329,7 @@ internal sealed class UsersForm : Form
             Dock = DockStyle.Fill,
             BackgroundColor = InvoiceTheme.Card,
             BorderStyle = BorderStyle.None,
-            CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
+            CellBorderStyle = DataGridViewCellBorderStyle.Single,
             ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None,
             EnableHeadersVisualStyles = false,
             AllowUserToAddRows = false,

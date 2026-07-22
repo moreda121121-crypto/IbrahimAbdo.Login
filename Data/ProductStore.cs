@@ -33,6 +33,7 @@ internal sealed class StockMovementRecord
     public int Quantity { get; set; }
     public DateTime At { get; set; } = DateTime.Now;
     public string Note { get; set; } = "";
+    public string InvoiceNumber { get; set; } = "";
 }
 
 internal static class ProductStore
@@ -151,6 +152,9 @@ internal static class ProductStore
     public static IEnumerable<StockMovementRecord> RecentMovements(int take = 12) =>
         Movements.OrderByDescending(m => m.At).Take(take);
 
+    public static IEnumerable<StockMovementRecord> MovementsFor(string productId) =>
+        Movements.Where(m => m.ProductId == productId).OrderByDescending(m => m.At);
+
     public static bool CodeExists(string code, string? excludeId = null) =>
         Items.Any(p => p.Code.Equals(code.Trim(), StringComparison.OrdinalIgnoreCase) &&
                        (excludeId is null || p.Id != excludeId));
@@ -212,7 +216,7 @@ internal static class ProductStore
     }
 
     /// <summary>Deduct stock and accumulate sold qty after an invoice is saved.</summary>
-    public static bool ApplySale(string? productId, string productName, int qty, out string? error)
+    public static bool ApplySale(string? productId, string productName, int qty, out string? error, string invoiceNumber = "")
     {
         error = null;
         if (qty <= 0)
@@ -237,7 +241,7 @@ internal static class ProductStore
         product.Quantity -= qty;
         product.TotalSoldQty += qty;
         product.UpdatedAt = DateTime.Now;
-        AddMovement(product, "Stock Out", qty, "بيع من فاتورة");
+        AddMovement(product, "Stock Out", qty, "بيع من فاتورة", invoiceNumber);
         Save();
         SaveMovements();
         return true;
@@ -273,7 +277,7 @@ internal static class ProductStore
         return true;
     }
 
-    private static void AddMovement(ProductRecord product, string type, int qty, string note)
+    private static void AddMovement(ProductRecord product, string type, int qty, string note, string invoiceNumber = "")
     {
         Movements.Insert(0, new StockMovementRecord
         {
@@ -282,7 +286,8 @@ internal static class ProductStore
             Type = type,
             Quantity = qty,
             At = DateTime.Now,
-            Note = note
+            Note = note,
+            InvoiceNumber = invoiceNumber
         });
     }
 

@@ -7,31 +7,23 @@ using QuestPDF.Infrastructure;
 
 namespace IbrahimAbdo.Login.Helpers;
 
-internal static class InvoicePdfGenerator
+/// <summary>Purchase-invoice PDF using the same visual template as the sales invoice.</summary>
+internal static class PurchasePdfGenerator
 {
-    public static string GenerateAndOpen(InvoiceRecord invoice) =>
+    public static string GenerateAndOpen(PurchaseInvoiceRecord invoice) =>
         Generate(invoice, openAfter: true);
 
-    /// <summary>Build the invoice PDF with the shared print template. Optionally open it.</summary>
-    public static string Generate(InvoiceRecord invoice, bool openAfter = true)
+    public static string Generate(PurchaseInvoiceRecord invoice, bool openAfter = true)
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
         var dir = Path.Combine(AppContext.BaseDirectory, "Invoices");
         Directory.CreateDirectory(dir);
-        var safeNumber = string.Join("_", (invoice.Number ?? "invoice").Split(Path.GetInvalidFileNameChars()));
+        var safeNumber = string.Join("_", (invoice.Number ?? "purchase").Split(Path.GetInvalidFileNameChars()));
         var filePath = Path.Combine(dir, $"{safeNumber}.pdf");
         var logo = LoadWhiteBackgroundLogoBytes();
-        var qr = CreateQrPng($"INV|{invoice.Number}|{invoice.CustomerName}|{invoice.GrandTotal:0.00}");
-        var rows = invoice.Items
-            .Where(i => !string.IsNullOrWhiteSpace(i.Name))
-            .Select(i => new InvoiceItemRecord
-            {
-                Name = i.Name,
-                Qty = i.Qty,
-                UnitPrice = i.UnitPrice
-            })
-            .ToList();
+        var qr = CreateQrPng($"PUR|{invoice.Number}|{invoice.SupplierName}|{invoice.GrandTotal:0.00}");
+        var rows = invoice.Items.Where(i => !string.IsNullOrWhiteSpace(i.Name)).ToList();
 
         Document.Create(container =>
         {
@@ -48,10 +40,9 @@ internal static class InvoicePdfGenerator
                 {
                     col.Spacing(8);
                     col.Item().Element(c => Header(c, invoice, logo, qr));
-                    col.Item().Element(c => InfoCards(c, invoice));
+                    col.Item().Element(c => InfoCard(c, invoice));
                     col.Item().Element(c => ItemsTable(c, rows));
                     col.Item().Element(c => BottomSection(c, invoice));
-                    col.Item().Element(TrustBadges);
                     col.Item().Element(ContactBar);
                     col.Item().Element(ThankYouBar);
                 });
@@ -70,12 +61,10 @@ internal static class InvoicePdfGenerator
         return filePath;
     }
 
-    private static void Header(IContainer container, InvoiceRecord invoice, byte[]? logo, byte[] qr)
+    private static void Header(IContainer container, PurchaseInvoiceRecord invoice, byte[]? logo, byte[] qr)
     {
-        // Avoid nested Width/Height inside ConstantItem — that triggers QuestPDF conflicting size constraints.
         container.Row(row =>
         {
-            // Logo on white background
             row.ConstantItem(150).Element(c =>
             {
                 c.Height(150).Background(Colors.White).Padding(4).Element(inner =>
@@ -91,18 +80,10 @@ internal static class InvoicePdfGenerator
                 });
             });
 
-            // Title + meta
             row.RelativeItem().PaddingHorizontal(8).AlignMiddle().Column(c =>
             {
-                c.Item().AlignCenter().Text("INVOICE")
-                    .Bold()
-                    .FontSize(26)
-                    .FontColor(Colors.Black);
-
-                c.Item().PaddingTop(2).AlignCenter().Text("فاتورة")
-                    .FontSize(13)
-                    .FontColor(Colors.Black);
-
+                c.Item().AlignCenter().Text("PURCHASE INVOICE").Bold().FontSize(22).FontColor(Colors.Black);
+                c.Item().PaddingTop(2).AlignCenter().Text("فاتورة شراء").FontSize(13).FontColor(Colors.Black);
                 c.Item().PaddingTop(8)
                     .Border(1).BorderColor(Colors.Black)
                     .PaddingVertical(5).PaddingHorizontal(8)
@@ -115,20 +96,13 @@ internal static class InvoicePdfGenerator
                     });
             });
 
-            // QR
             row.ConstantItem(100).Element(c =>
             {
                 c.Column(col =>
                 {
                     col.Item().Height(90).Image(qr).FitArea();
-                    col.Item().PaddingTop(4)
-                        .Background(Colors.Black)
-                        .PaddingVertical(4)
-                        .AlignCenter()
-                        .Text("SCAN ME")
-                        .FontColor(Colors.White)
-                        .FontSize(8)
-                        .Bold();
+                    col.Item().PaddingTop(4).Background(Colors.Black).PaddingVertical(4)
+                        .AlignCenter().Text("SCAN ME").FontColor(Colors.White).FontSize(8).Bold();
                 });
             });
         });
@@ -143,37 +117,27 @@ internal static class InvoicePdfGenerator
         });
     }
 
-    private static void InfoCards(IContainer container, InvoiceRecord invoice)
+    private static void InfoCard(IContainer container, PurchaseInvoiceRecord invoice)
     {
-        container.Row(row =>
+        container.Border(1).BorderColor(Colors.Black).Column(card =>
         {
-            row.RelativeItem().Border(1).BorderColor(Colors.Black).Column(card =>
+            card.Item().Background(Colors.Grey.Darken3).Padding(5)
+                .Text("SUPPLIER INFORMATION / بيانات المورد")
+                .FontColor(Colors.White).SemiBold().FontSize(8);
+            card.Item().Padding(7).Row(row =>
             {
-                card.Item().Background(Colors.Grey.Darken3).Padding(5)
-                    .Text("CUSTOMER INFORMATION / بيانات العميل")
-                    .FontColor(Colors.White).SemiBold().FontSize(8);
-                card.Item().Padding(7).Column(body =>
+                row.RelativeItem().Column(body =>
                 {
-                    body.Item().Element(c => Field(c, "CUSTOMER NAME / اسم العميل", invoice.CustomerName));
-                    body.Item().Element(c => Field(c, "PHONE NUMBER / رقم الهاتف", invoice.Phone));
+                    body.Item().Element(c => Field(c, "SUPPLIER NAME / اسم المورد", invoice.SupplierName));
+                    body.Item().Element(c => Field(c, "PHONE NUMBER / رقم الهاتف",
+                        string.IsNullOrWhiteSpace(invoice.Phone) ? "—" : invoice.Phone));
                 });
-            });
-
-            row.ConstantItem(8);
-
-            row.RelativeItem().Border(1).BorderColor(Colors.Black).Column(card =>
-            {
-                card.Item().Background(Colors.Grey.Darken3).Padding(5)
-                    .Text("VEHICLE INFORMATION / بيانات السيارة")
-                    .FontColor(Colors.White).SemiBold().FontSize(8);
-                card.Item().Padding(7).Column(body =>
+                row.ConstantItem(16);
+                row.RelativeItem().Column(body =>
                 {
-                    body.Item().Element(c => Field(c, "LICENSE PLATE NO. / رقم اللوحة", invoice.PlateNumber));
-                    body.Item().Element(c => Field(c, "PLATE LETTERS / حروف اللوحة", invoice.PlateLetters));
-                    body.Item().Element(c => Field(c, "CHASSIS NUMBER / رقم الشاسيه",
-                        string.IsNullOrWhiteSpace(invoice.ChassisNumber) ? "—" : invoice.ChassisNumber));
-                    body.Item().Element(c => Field(c, "ODOMETER READING / قراءة العداد", invoice.Odometer));
-                    body.Item().Element(c => Field(c, "CAR BRAND / MODEL / الماركة / الموديل", invoice.CarModel));
+                    body.Item().Element(c => Field(c, "PAYMENT METHOD / طريقة الدفع",
+                        string.IsNullOrWhiteSpace(invoice.PaymentMethod) ? "—" : invoice.PaymentMethod));
+                    body.Item().Element(c => Field(c, "DATE / التاريخ", invoice.CreatedAt.ToString("dd/MM/yyyy HH:mm")));
                 });
             });
         });
@@ -188,9 +152,8 @@ internal static class InvoicePdfGenerator
         });
     }
 
-    private static void ItemsTable(IContainer container, List<InvoiceItemRecord> rows)
+    private static void ItemsTable(IContainer container, List<PurchaseInvoiceItemRecord> rows)
     {
-        // RTL: numbers on the left, item text then # on the right
         container.Border(1).BorderColor(Colors.Black).Table(table =>
         {
             table.ColumnsDefinition(c =>
@@ -207,7 +170,7 @@ internal static class InvoicePdfGenerator
                 h.Cell().Element(HeaderCell).AlignCenter().Text("TOTAL\nالإجمالي").FontColor(Colors.White).Bold().FontSize(7);
                 h.Cell().Element(HeaderCell).AlignCenter().Text("UNIT PRICE\nسعر الوحدة").FontColor(Colors.White).Bold().FontSize(7);
                 h.Cell().Element(HeaderCell).AlignCenter().Text("QTY.\nالكمية").FontColor(Colors.White).Bold().FontSize(7);
-                h.Cell().Element(HeaderCell).AlignCenter().Text("ITEM / SERVICE / الصنف / الخدمة").FontColor(Colors.White).Bold().FontSize(8);
+                h.Cell().Element(HeaderCell).AlignCenter().Text("ITEM / الصنف").FontColor(Colors.White).Bold().FontSize(8);
                 h.Cell().Element(HeaderCell).AlignCenter().Text("#").FontColor(Colors.White).Bold().FontSize(8);
             });
 
@@ -216,15 +179,11 @@ internal static class InvoicePdfGenerator
                 var item = rows[i];
                 var bg = i % 2 == 0 ? Colors.White : Colors.Grey.Lighten3;
 
-                table.Cell().Element(c => BodyCell(c, bg)).AlignLeft()
-                    .Text(item.Total.ToString("N2")).FontSize(8);
-                table.Cell().Element(c => BodyCell(c, bg)).AlignLeft()
-                    .Text(item.UnitPrice.ToString("N2")).FontSize(8);
-                table.Cell().Element(c => BodyCell(c, bg)).AlignCenter()
-                    .Text(item.Qty.ToString()).FontSize(8);
+                table.Cell().Element(c => BodyCell(c, bg)).AlignLeft().Text(item.Total.ToString("N2")).FontSize(8);
+                table.Cell().Element(c => BodyCell(c, bg)).AlignLeft().Text(item.UnitPrice.ToString("N2")).FontSize(8);
+                table.Cell().Element(c => BodyCell(c, bg)).AlignCenter().Text(item.Qty.ToString()).FontSize(8);
                 table.Cell().Element(c => BodyCell(c, bg)).AlignRight().Text(item.Name).FontSize(8);
-                table.Cell().Element(c => IndexCell(c)).AlignCenter()
-                    .Text((i + 1).ToString()).FontColor(Colors.White).FontSize(7);
+                table.Cell().Element(IndexCell).AlignCenter().Text((i + 1).ToString()).FontColor(Colors.White).FontSize(7);
             }
 
             if (rows.Count == 0)
@@ -247,26 +206,11 @@ internal static class InvoicePdfGenerator
                 .PaddingVertical(2).PaddingHorizontal(3).MinHeight(14);
     }
 
-    private static void BottomSection(IContainer container, InvoiceRecord invoice)
+    private static void BottomSection(IContainer container, PurchaseInvoiceRecord invoice)
     {
+        var remaining = Math.Max(0, invoice.GrandTotal - invoice.Paid);
         container.Row(row =>
         {
-            row.RelativeItem(2).Border(1).BorderColor(Colors.Black).Column(card =>
-            {
-                card.Item().Background(Colors.Grey.Darken3).Padding(4)
-                    .Text("PAYMENT METHOD / طريقة الدفع").FontColor(Colors.White).SemiBold().FontSize(8);
-                card.Item().Padding(6).Column(body =>
-                {
-                    body.Item().Element(c => Pay(c, "CASH / نقدي", IsPay(invoice, "نقدي")));
-                    body.Item().Element(c => Pay(c, "CARD / فيزا", IsPay(invoice, "فيزا")));
-                    body.Item().Element(c => Pay(c, "TRANSFER / انستا باي", IsPay(invoice, "انستا")));
-                    body.Item().Element(c => Pay(c, "CREDIT / أجل", IsPay(invoice, "أجل")));
-                    body.Item().Element(c => Pay(c, "VODAFONE CASH / فودافون كاش", IsPay(invoice, "فودافون")));
-                });
-            });
-
-            row.ConstantItem(6);
-
             row.RelativeItem(2).Border(1).BorderColor(Colors.Black).Column(card =>
             {
                 card.Item().Background(Colors.Grey.Darken3).Padding(4)
@@ -276,7 +220,7 @@ internal static class InvoicePdfGenerator
                     var notes = string.IsNullOrWhiteSpace(invoice.Notes) ? "" : invoice.Notes.Trim();
                     if (string.IsNullOrWhiteSpace(notes))
                     {
-                        for (var i = 0; i < 5; i++)
+                        for (var i = 0; i < 4; i++)
                         {
                             body.Item().PaddingTop(7).BorderBottom(0.7f).BorderColor(Colors.Grey.Lighten1).Height(9);
                         }
@@ -298,26 +242,10 @@ internal static class InvoicePdfGenerator
                     card.Item().Element(c => Total(c, "DISCOUNT / الخصم", invoice.Discount.ToString("N2"), false));
                 }
 
-                card.Item().Element(c => Total(c, "LABOR / المصنعية", invoice.LaborFee.ToString("N2"), false));
                 card.Item().Element(c => Total(c, "TOTAL AMOUNT / المجموع الكلي", invoice.GrandTotal.ToString("N2"), true));
-                if (IsPay(invoice, "أجل"))
-                {
-                    card.Item().Element(c => Total(c, "PAID AMOUNT / المبلغ المدفوع", invoice.Paid.ToString("N2"), false));
-                    card.Item().Element(c => Total(c, "DUE AMOUNT / المبلغ المتبقي", invoice.Remaining.ToString("N2"), false));
-                }
+                card.Item().Element(c => Total(c, "PAID AMOUNT / المبلغ المدفوع", invoice.Paid.ToString("N2"), false));
+                card.Item().Element(c => Total(c, "DUE AMOUNT / المبلغ المتبقي", remaining.ToString("N2"), false));
             });
-        });
-    }
-
-    private static void Pay(IContainer container, string label, bool selected)
-    {
-        container.PaddingBottom(3).Row(row =>
-        {
-            row.RelativeItem().Text(label).FontSize(7.5f);
-            row.ConstantItem(14).Height(12).Border(1).BorderColor(Colors.Black)
-                .Background(selected ? Colors.Black : Colors.White)
-                .AlignCenter().AlignMiddle()
-                .Text(selected ? "✓" : "").FontColor(Colors.White).FontSize(7);
         });
     }
 
@@ -332,36 +260,11 @@ internal static class InvoicePdfGenerator
 
         cell.Row(row =>
         {
-            row.RelativeItem().Text(label)
-                .FontSize(7)
-                .FontColor(highlight ? Colors.White : Colors.Black)
-                .SemiBold();
-            row.ConstantItem(55).AlignRight().Text(value)
-                .FontSize(8)
-                .FontColor(highlight ? Colors.White : Colors.Black)
-                .Bold();
+            row.RelativeItem().Text(label).FontSize(7)
+                .FontColor(highlight ? Colors.White : Colors.Black).SemiBold();
+            row.ConstantItem(55).AlignRight().Text(value).FontSize(8)
+                .FontColor(highlight ? Colors.White : Colors.Black).Bold();
         });
-    }
-
-    private static void TrustBadges(IContainer container)
-    {
-        container.PaddingTop(2).Row(row =>
-        {
-            Badge(row, "QUALITY YOU CAN TRUST", "Genuine Parts");
-            Badge(row, "EXPERT SERVICE", "Skilled Technicians");
-            Badge(row, "POWER IN EVERY PART", "Built for Performance");
-        });
-
-        static void Badge(RowDescriptor row, string title, string sub)
-        {
-            row.RelativeItem().AlignCenter().Column(c =>
-            {
-                c.Item().AlignCenter().Width(24).Height(24).Border(1).BorderColor(Colors.Black)
-                    .AlignCenter().AlignMiddle().Text("★").FontSize(9);
-                c.Item().AlignCenter().Text(title).FontSize(6.5f).SemiBold();
-                c.Item().AlignCenter().Text(sub).FontSize(6).FontColor(Colors.Grey.Darken2);
-            });
-        }
     }
 
     private static void ContactBar(IContainer container)
@@ -380,12 +283,9 @@ internal static class InvoicePdfGenerator
         container.Background(Colors.Black).PaddingVertical(7).PaddingHorizontal(12).Row(row =>
         {
             row.RelativeItem().AlignMiddle().Text("THANK YOU").FontColor(Colors.White).Bold().FontSize(11);
-            row.RelativeItem().AlignMiddle().AlignRight().Text("شكراً لثقتكم بنا").FontColor(Colors.White).Bold().FontSize(11);
+            row.RelativeItem().AlignMiddle().AlignRight().Text("شكراً لتعاملكم معنا").FontColor(Colors.White).Bold().FontSize(11);
         });
     }
-
-    private static bool IsPay(InvoiceRecord invoice, string key) =>
-        invoice.PaymentMethod.Contains(key, StringComparison.OrdinalIgnoreCase);
 
     private static byte[]? LoadWhiteBackgroundLogoBytes()
     {
@@ -395,7 +295,6 @@ internal static class InvoicePdfGenerator
 
         try
         {
-            // New invoice logo is already black artwork on white — use as-is.
             if (File.Exists(invoiceLogoPath))
             {
                 return File.ReadAllBytes(invoiceLogoPath);

@@ -5,20 +5,18 @@ using IbrahimAbdo.Login.Theme;
 
 namespace IbrahimAbdo.Login.Forms;
 
-/// <summary>
-/// Invoice details + reprint using the shared PDF print template.
-/// </summary>
-internal sealed class InvoiceDetailsDialog : Form
+/// <summary>Purchase invoice details + print using the shared purchase PDF template.</summary>
+internal sealed class PurchaseInvoiceDetailsDialog : Form
 {
-    private readonly InvoiceRecord _invoice;
+    private readonly PurchaseInvoiceRecord _invoice;
 
-    public InvoiceDetailsDialog(InvoiceRecord invoice)
+    public PurchaseInvoiceDetailsDialog(PurchaseInvoiceRecord invoice)
     {
         _invoice = invoice;
         SuspendLayout();
         WindowTheme.Attach(this);
         AutoScaleMode = AutoScaleMode.Dpi;
-        Text = $"فاتورة {_invoice.Number}";
+        Text = $"فاتورة شراء {_invoice.Number}";
         FormBorderStyle = FormBorderStyle.Sizable;
         StartPosition = FormStartPosition.CenterParent;
         MinimizeBox = false;
@@ -26,8 +24,8 @@ internal sealed class InvoiceDetailsDialog : Form
         BackColor = InvoiceTheme.Background;
         ForeColor = InvoiceTheme.White;
         Font = InvoiceTheme.BodyFont;
-        ClientSize = new Size(920, 640);
-        MinimumSize = new Size(760, 520);
+        ClientSize = new Size(880, 600);
+        MinimumSize = new Size(720, 500);
         RightToLeft = RightToLeft.No;
 
         var root = new TableLayoutPanel
@@ -46,7 +44,7 @@ internal sealed class InvoiceDetailsDialog : Form
         var title = new Label
         {
             Dock = DockStyle.Fill,
-            Text = $"تفاصيل الفاتورة  •  {_invoice.Number}",
+            Text = $"تفاصيل فاتورة الشراء  •  {_invoice.Number}",
             Font = InvoiceTheme.TitleFont,
             ForeColor = InvoiceTheme.Gold,
             TextAlign = ContentAlignment.MiddleRight,
@@ -61,9 +59,9 @@ internal sealed class InvoiceDetailsDialog : Form
             RowCount = 2,
             BackColor = Color.Transparent
         };
-        body.RowStyles.Add(new RowStyle(SizeType.Absolute, 185));
+        body.RowStyles.Add(new RowStyle(SizeType.Absolute, 140));
         body.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
-        body.Controls.Add(BuildInfoCards(), 0, 0);
+        body.Controls.Add(BuildInfoCard(), 0, 0);
         body.Controls.Add(BuildItemsCard(), 0, 1);
 
         var footer = new FlowLayoutPanel
@@ -73,7 +71,7 @@ internal sealed class InvoiceDetailsDialog : Form
             BackColor = Color.Transparent,
             Padding = new Padding(0, 8, 0, 0)
         };
-        footer.Controls.Add(CreateButton("طباعة", true, (_, _) => Reprint()));
+        footer.Controls.Add(CreateButton("طباعة", true, (_, _) => Print()));
 
         root.Controls.Add(header, 0, 0);
         root.Controls.Add(body, 0, 1);
@@ -83,36 +81,28 @@ internal sealed class InvoiceDetailsDialog : Form
         ResumeLayout(true);
     }
 
-    private Control BuildInfoCards()
+    private Control BuildInfoCard()
     {
         var row = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 3,
+            ColumnCount = 2,
             RowCount = 1,
             BackColor = Color.Transparent,
             Margin = new Padding(0, 0, 0, 8)
         };
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34F));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33F));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33F));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
 
         row.Controls.Add(InfoCard("بيانات الفاتورة",
             $"رقم الفاتورة: {_invoice.Number}",
             $"التاريخ: {_invoice.CreatedAt:dd/MM/yyyy HH:mm}",
-            $"الدفع: {_invoice.PaymentMethod}",
-            $"الفني: {_invoice.Technician}"), 0, 0);
+            $"طريقة الدفع: {_invoice.PaymentMethod}"), 0, 0);
 
-        row.Controls.Add(InfoCard("بيانات العميل",
-            $"الاسم: {_invoice.CustomerName}",
-            $"الهاتف: {_invoice.Phone}"), 1, 0);
-
-        var plate = $"{_invoice.PlateLetters} {_invoice.PlateNumber}".Trim();
-        row.Controls.Add(InfoCard("بيانات السيارة",
-            $"الموديل: {_invoice.CarModel}",
-            $"اللوحة: {(string.IsNullOrWhiteSpace(plate) ? "—" : plate)}",
-            $"رقم الشاسية: {_invoice.ChassisNumber}",
-            $"العداد: {_invoice.Odometer}"), 2, 0);
+        row.Controls.Add(InfoCard("بيانات المورد",
+            $"اسم المورد: {_invoice.SupplierName}",
+            $"الهاتف: {_invoice.Phone}",
+            $"ملاحظات: {_invoice.Notes}"), 1, 0);
 
         return row;
     }
@@ -134,18 +124,19 @@ internal sealed class InvoiceDetailsDialog : Form
         {
             Dock = DockStyle.Top,
             Height = 28,
-            Text = "أصناف / خدمات الفاتورة",
+            Text = "أصناف الفاتورة",
             ForeColor = InvoiceTheme.Gold,
             Font = InvoiceTheme.SectionFont,
             TextAlign = ContentAlignment.MiddleRight,
             RightToLeft = RightToLeft.Yes
         };
 
+        var remaining = Math.Max(0, _invoice.GrandTotal - _invoice.Paid);
         var totals = new Label
         {
             Dock = DockStyle.Bottom,
             Height = 34,
-            Text = $"الإجمالي: {_invoice.GrandTotal:N2} ج.م   |   المصنعية: {_invoice.LaborFee:N2}   |   المدفوع: {_invoice.Paid:N2}   |   المتبقي: {_invoice.Remaining:N2}   |   الخصم: {_invoice.Discount:N2}",
+            Text = $"الإجمالي: {_invoice.GrandTotal:N2} ج.م   |   المدفوع: {_invoice.Paid:N2}   |   المتبقي: {remaining:N2}   |   الخصم: {_invoice.Discount:N2}",
             ForeColor = InvoiceTheme.Gold,
             Font = InvoiceTheme.BodyFont,
             TextAlign = ContentAlignment.MiddleRight,
@@ -189,9 +180,9 @@ internal sealed class InvoiceDetailsDialog : Form
             ColumnHeadersHeight = 32
         };
         grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "#", FillWeight = 8 });
-        grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "الصنف / الخدمة", FillWeight = 40 });
+        grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "الصنف", FillWeight = 40 });
         grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "الكمية", FillWeight = 12 });
-        grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "السعر", FillWeight = 20 });
+        grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "سعر الشراء", FillWeight = 20 });
         grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "الإجمالي", FillWeight = 20 });
 
         var i = 1;
@@ -285,11 +276,11 @@ internal sealed class InvoiceDetailsDialog : Form
         return card;
     }
 
-    private void Reprint()
+    private void Print()
     {
         try
         {
-            InvoicePdfGenerator.GenerateAndOpen(_invoice);
+            PurchasePdfGenerator.GenerateAndOpen(_invoice);
             AppMessageDialog.Success(this, "تم طباعة الفاتورة.", "طباعة");
         }
         catch (Exception ex)

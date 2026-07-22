@@ -21,6 +21,7 @@ internal sealed class TechniciansForm : Form
     {
         _embedded = embedded;
         SuspendLayout();
+        WindowTheme.Attach(this);
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = InvoiceTheme.Background;
@@ -100,7 +101,6 @@ internal sealed class TechniciansForm : Form
         };
         _lblDate = new Label { AutoSize = true, ForeColor = InvoiceTheme.Muted, Font = InvoiceTheme.SmallFont, Margin = new Padding(8, 8, 12, 0) };
         _lblTime = new Label { AutoSize = true, ForeColor = InvoiceTheme.Muted, Font = InvoiceTheme.SmallFont, Margin = new Padding(8, 8, 8, 0) };
-        right.Controls.Add(CreateChromeIcon("\uE7E7"));
         right.Controls.Add(_lblDate);
         right.Controls.Add(CreateChromeIcon("\uE121"));
         right.Controls.Add(_lblTime);
@@ -130,15 +130,12 @@ internal sealed class TechniciansForm : Form
 
     private Control BuildToolbar()
     {
-        var bar = new TableLayoutPanel
+        var bar = new Panel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 2,
-            RowCount = 1,
-            BackColor = Color.Transparent
+            BackColor = Color.Transparent,
+            Padding = new Padding(0, 4, 0, 0)
         };
-        bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
         _txtSearch = new Guna2TextBox
         {
@@ -150,28 +147,26 @@ internal sealed class TechniciansForm : Form
             Font = InvoiceTheme.BodyFont,
             PlaceholderText = "بحث بالاسم / الرقم / العنوان",
             PlaceholderForeColor = InvoiceTheme.Muted,
-            Dock = DockStyle.Left,
-            Width = 360,
-            Height = 36,
-            Margin = new Padding(0, 4, 8, 0),
-            IconLeft = GlyphHelper.Create("\uE721", InvoiceTheme.Gold, 14),
-            IconLeftSize = new Size(16, 16),
+            Size = new Size(520, 40),
+            Location = new Point(0, 0),
+            Anchor = AnchorStyles.Top | AnchorStyles.Left,
+            IconLeft = GlyphHelper.Create("\uE721", InvoiceTheme.Gold, 16),
+            IconLeftSize = new Size(18, 18),
             FocusedState = { BorderColor = InvoiceTheme.Gold }
         };
         _txtSearch.TextChanged += (_, _) => RefreshData();
 
-        var buttons = new FlowLayoutPanel
+        var addBtn = CreateToolbarButton("+ إضافة فني", true, (_, _) => OpenAdd());
+        addBtn.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        bar.Resize += (_, _) =>
         {
-            AutoSize = true,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
-            BackColor = Color.Transparent,
-            Margin = new Padding(0, 4, 0, 0)
+            addBtn.Left = Math.Max(_txtSearch.Right + 16, bar.ClientSize.Width - addBtn.Width);
+            addBtn.Top = 0;
         };
-        buttons.Controls.Add(CreateToolbarButton("+ إضافة فني", true, (_, _) => OpenAdd()));
 
-        bar.Controls.Add(_txtSearch, 0, 0);
-        bar.Controls.Add(buttons, 1, 0);
+        bar.Controls.Add(_txtSearch);
+        bar.Controls.Add(addBtn);
+        addBtn.Left = Math.Max(_txtSearch.Right + 16, bar.ClientSize.Width - addBtn.Width);
         return bar;
     }
 
@@ -210,7 +205,7 @@ internal sealed class TechniciansForm : Form
             Dock = DockStyle.Fill,
             BackgroundColor = InvoiceTheme.Card,
             BorderStyle = BorderStyle.None,
-            CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
+            CellBorderStyle = DataGridViewCellBorderStyle.Single,
             ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None,
             EnableHeadersVisualStyles = false,
             GridColor = InvoiceTheme.CardBorder,
@@ -224,25 +219,29 @@ internal sealed class TechniciansForm : Form
             RowTemplate = { Height = 36 },
             Font = InvoiceTheme.BodyFont,
             ForeColor = InvoiceTheme.White,
+            RightToLeft = RightToLeft.Yes,
             DefaultCellStyle = new DataGridViewCellStyle
             {
                 BackColor = InvoiceTheme.Card,
                 ForeColor = InvoiceTheme.White,
                 SelectionBackColor = Color.FromArgb(48, InvoiceTheme.Gold),
-                SelectionForeColor = InvoiceTheme.White
+                SelectionForeColor = InvoiceTheme.White,
+                Alignment = DataGridViewContentAlignment.MiddleCenter
             },
             AlternatingRowsDefaultCellStyle = new DataGridViewCellStyle
             {
                 BackColor = InvoiceTheme.RowAlt,
                 ForeColor = InvoiceTheme.White,
                 SelectionBackColor = Color.FromArgb(48, InvoiceTheme.Gold),
-                SelectionForeColor = InvoiceTheme.White
+                SelectionForeColor = InvoiceTheme.White,
+                Alignment = DataGridViewContentAlignment.MiddleCenter
             },
             ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle
             {
-                BackColor = Color.FromArgb(30, 30, 30),
-                ForeColor = InvoiceTheme.Gold,
-                Font = InvoiceTheme.TableHeaderFont
+                BackColor = InvoiceTheme.Gold,
+                ForeColor = Color.Black,
+                Font = InvoiceTheme.TableHeaderFont,
+                Alignment = DataGridViewContentAlignment.MiddleCenter
             },
             ColumnHeadersHeight = 36
         };
@@ -314,8 +313,7 @@ internal sealed class TechniciansForm : Form
             return;
         }
 
-        if (MessageBox.Show(this, $"حذف الفني «{tech.Name}»؟", "تأكيد",
-                MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+        if (!AppMessageDialog.Confirm(this, $"حذف الفني «{tech.Name}»؟"))
         {
             return;
         }

@@ -20,13 +20,19 @@ internal sealed class InvoiceManagementForm : Form
     private Bitmap _printIcon = null!;
 
     private List<InvoiceRecord> _filtered = [];
+    private List<PurchaseInvoiceRecord> _filteredPurchases = [];
+    private bool _showPurchase;
+    private Guna2Button _btnSales = null!;
+    private Guna2Button _btnPurchase = null!;
+    private Label _lblTotalTitle = null!;
     private int _page;
-    private const int PageSize = 10;
+    private const int PageSize = 16;
 
     public InvoiceManagementForm(bool embedded = false)
     {
         _embedded = embedded;
         SuspendLayout();
+        WindowTheme.Attach(this);
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = InvoiceTheme.Background;
@@ -57,7 +63,7 @@ internal sealed class InvoiceManagementForm : Form
         {
             if (Visible)
             {
-                InvoiceStore.Load();
+                ReloadCurrentStore();
                 RefreshData();
             }
         };
@@ -107,7 +113,6 @@ internal sealed class InvoiceManagementForm : Form
         };
         _lblDate = new Label { AutoSize = true, ForeColor = InvoiceTheme.Muted, Font = InvoiceTheme.SmallFont, Margin = new Padding(8, 8, 12, 0) };
         _lblTime = new Label { AutoSize = true, ForeColor = InvoiceTheme.Muted, Font = InvoiceTheme.SmallFont, Margin = new Padding(8, 8, 8, 0) };
-        right.Controls.Add(CreateChromeIcon("\uE7E7"));
         right.Controls.Add(_lblDate);
         right.Controls.Add(CreateChromeIcon("\uE121"));
         right.Controls.Add(_lblTime);
@@ -140,15 +145,12 @@ internal sealed class InvoiceManagementForm : Form
 
     private Control BuildToolbar()
     {
-        var bar = new TableLayoutPanel
+        var bar = new Panel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 2,
-            RowCount = 1,
-            BackColor = Color.Transparent
+            BackColor = Color.Transparent,
+            Padding = new Padding(0, 4, 0, 0)
         };
-        bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
-        bar.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
         _txtSearch = new Guna2TextBox
         {
@@ -160,33 +162,82 @@ internal sealed class InvoiceManagementForm : Form
             Font = InvoiceTheme.BodyFont,
             PlaceholderText = "بحث برقم الفاتورة / العميل / اللوحة / السيارة",
             PlaceholderForeColor = InvoiceTheme.Muted,
-            Dock = DockStyle.Left,
-            Width = 420,
-            Height = 36,
-            Margin = new Padding(0, 4, 8, 0),
-            IconLeft = GlyphHelper.Create("\uE721", InvoiceTheme.Gold, 14),
-            IconLeftSize = new Size(16, 16),
+            Size = new Size(560, 40),
+            Location = new Point(0, 0),
+            Anchor = AnchorStyles.Top | AnchorStyles.Left,
+            IconLeft = GlyphHelper.Create("\uE721", InvoiceTheme.Gold, 16),
+            IconLeftSize = new Size(18, 18),
             FocusedState = { BorderColor = InvoiceTheme.Gold }
         };
         _txtSearch.TextChanged += (_, _) => { _page = 0; RefreshData(); };
 
-        var buttons = new FlowLayoutPanel
+        _btnSales = CreateToolbarButton("فواتير البيع", true, (_, _) => SetMode(false));
+        _btnSales.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+
+        _btnPurchase = CreateToolbarButton("فواتير الشراء", false, (_, _) => SetMode(true));
+        _btnPurchase.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+
+        var refreshBtn = CreateToolbarButton("تحديث", false, (_, _) =>
         {
-            AutoSize = true,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
-            BackColor = Color.Transparent,
-            Margin = new Padding(0, 4, 0, 0)
-        };
-        buttons.Controls.Add(CreateToolbarButton("تحديث", false, (_, _) =>
+            ReloadCurrentStore();
+            RefreshData();
+        });
+        refreshBtn.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+
+        void LayoutButtons()
+        {
+            refreshBtn.Top = 0;
+            _btnPurchase.Top = 0;
+            _btnSales.Top = 0;
+            refreshBtn.Left = bar.ClientSize.Width - refreshBtn.Width;
+            _btnPurchase.Left = refreshBtn.Left - 8 - _btnPurchase.Width;
+            _btnSales.Left = _btnPurchase.Left - 8 - _btnSales.Width;
+        }
+
+        bar.Resize += (_, _) => LayoutButtons();
+
+        bar.Controls.Add(_txtSearch);
+        bar.Controls.Add(_btnSales);
+        bar.Controls.Add(_btnPurchase);
+        bar.Controls.Add(refreshBtn);
+        LayoutButtons();
+        return bar;
+    }
+
+    private void SetMode(bool showPurchase)
+    {
+        _showPurchase = showPurchase;
+        _page = 0;
+        UpdateModeButtons();
+        ReloadCurrentStore();
+        RefreshData();
+    }
+
+    private void UpdateModeButtons()
+    {
+        StyleModeButton(_btnSales, !_showPurchase);
+        StyleModeButton(_btnPurchase, _showPurchase);
+    }
+
+    private static void StyleModeButton(Guna2Button btn, bool active)
+    {
+        btn.FillColor = active ? InvoiceTheme.Gold : InvoiceTheme.Card;
+        btn.ForeColor = active ? Color.Black : InvoiceTheme.White;
+        btn.BorderThickness = active ? 0 : 1;
+        btn.HoverState.FillColor = active ? InvoiceTheme.GoldDark : Color.FromArgb(30, InvoiceTheme.Gold);
+        btn.HoverState.ForeColor = active ? Color.Black : InvoiceTheme.White;
+    }
+
+    private void ReloadCurrentStore()
+    {
+        if (_showPurchase)
+        {
+            PurchaseInvoiceStore.Load();
+        }
+        else
         {
             InvoiceStore.Load();
-            RefreshData();
-        }));
-
-        bar.Controls.Add(_txtSearch, 0, 0);
-        bar.Controls.Add(buttons, 1, 0);
-        return bar;
+        }
     }
 
     private Control BuildStats()
@@ -204,8 +255,9 @@ internal sealed class InvoiceManagementForm : Form
 
         _lblCount = new Label();
         _lblTotalSales = new Label();
+        _lblTotalTitle = new Label();
         row.Controls.Add(CreateStatCard("عدد الفواتير", _lblCount, "\uE8A5"), 0, 0);
-        row.Controls.Add(CreateStatCard("إجمالي المبيعات", _lblTotalSales, "\uE9D2"), 1, 0);
+        row.Controls.Add(CreateStatCard("إجمالي المبيعات", _lblTotalSales, "\uE9D2", _lblTotalTitle), 1, 0);
         return row;
     }
 
@@ -228,7 +280,7 @@ internal sealed class InvoiceManagementForm : Form
             Dock = DockStyle.Fill,
             BackgroundColor = InvoiceTheme.Card,
             BorderStyle = BorderStyle.None,
-            CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
+            CellBorderStyle = DataGridViewCellBorderStyle.Single,
             ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None,
             EnableHeadersVisualStyles = false,
             GridColor = InvoiceTheme.CardBorder,
@@ -243,27 +295,30 @@ internal sealed class InvoiceManagementForm : Form
             RowTemplate = { Height = 36 },
             Font = InvoiceTheme.SmallFont,
             ForeColor = InvoiceTheme.White,
+            RightToLeft = RightToLeft.Yes,
             DefaultCellStyle = new DataGridViewCellStyle
             {
                 BackColor = InvoiceTheme.Card,
                 ForeColor = InvoiceTheme.White,
                 SelectionBackColor = Color.FromArgb(48, InvoiceTheme.Gold),
                 SelectionForeColor = InvoiceTheme.White,
-                Padding = new Padding(4, 0, 4, 0)
+                Padding = new Padding(4, 0, 4, 0),
+                Alignment = DataGridViewContentAlignment.MiddleCenter
             },
             AlternatingRowsDefaultCellStyle = new DataGridViewCellStyle
             {
                 BackColor = InvoiceTheme.RowAlt,
                 ForeColor = InvoiceTheme.White,
                 SelectionBackColor = Color.FromArgb(48, InvoiceTheme.Gold),
-                SelectionForeColor = InvoiceTheme.White
+                SelectionForeColor = InvoiceTheme.White,
+                Alignment = DataGridViewContentAlignment.MiddleCenter
             },
             ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle
             {
                 BackColor = Color.FromArgb(30, 30, 30),
                 ForeColor = InvoiceTheme.Gold,
                 Font = InvoiceTheme.TableHeaderFont,
-                Alignment = DataGridViewContentAlignment.MiddleLeft
+                Alignment = DataGridViewContentAlignment.MiddleCenter
             },
             ColumnHeadersHeight = 36
         };
@@ -276,6 +331,7 @@ internal sealed class InvoiceManagementForm : Form
         _grid.Columns.Add(new DataGridViewImageColumn { Name = "colView", HeaderText = "عرض", FillWeight = 8, Image = _viewIcon, ImageLayout = DataGridViewImageCellLayout.Zoom });
         _grid.Columns.Add(new DataGridViewImageColumn { Name = "colPrint", HeaderText = "طباعة", FillWeight = 8, Image = _printIcon, ImageLayout = DataGridViewImageCellLayout.Zoom });
         _grid.CellClick += OnGridCellClick;
+        _grid.CellDoubleClick += OnGridCellDoubleClick;
         EnableDoubleBuffering(_grid);
 
         card.Controls.Add(_grid);
@@ -306,27 +362,87 @@ internal sealed class InvoiceManagementForm : Form
         bar.Controls.Add(_lblPage);
         bar.Controls.Add(CreateToolbarButton("التالي", false, (_, _) =>
         {
-            if ((_page + 1) * PageSize < _filtered.Count) { _page++; BindGrid(); }
+            var total = _showPurchase ? _filteredPurchases.Count : _filtered.Count;
+            if ((_page + 1) * PageSize < total) { _page++; BindGrid(); }
         }));
         return bar;
     }
 
     public void RefreshData()
     {
-        _filtered = InvoiceStore.Search(_txtSearch.Text).ToList();
-        if (_page * PageSize >= Math.Max(1, _filtered.Count))
+        if (_showPurchase)
         {
-            _page = 0;
+            _filteredPurchases = FilterPurchases(_txtSearch.Text);
+            if (_page * PageSize >= Math.Max(1, _filteredPurchases.Count))
+            {
+                _page = 0;
+            }
+
+            _lblCount.Text = _filteredPurchases.Count.ToString();
+            _lblTotalSales.Text = $"{_filteredPurchases.Sum(i => i.GrandTotal):N0} ج.م";
+        }
+        else
+        {
+            _filtered = InvoiceStore.Search(_txtSearch.Text).ToList();
+            if (_page * PageSize >= Math.Max(1, _filtered.Count))
+            {
+                _page = 0;
+            }
+
+            _lblCount.Text = _filtered.Count.ToString();
+            _lblTotalSales.Text = $"{_filtered.Sum(i => i.GrandTotal):N0} ج.م";
         }
 
-        _lblCount.Text = _filtered.Count.ToString();
-        _lblTotalSales.Text = $"{_filtered.Sum(i => i.GrandTotal):N0} ج.م";
+        ApplyModeToColumns();
         BindGrid();
+    }
+
+    private static List<PurchaseInvoiceRecord> FilterPurchases(string query)
+    {
+        IEnumerable<PurchaseInvoiceRecord> items = PurchaseInvoiceStore.All;
+        query = query?.Trim() ?? "";
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            items = items.Where(i =>
+                i.Number.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                i.SupplierName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                i.Phone.Contains(query, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return items.OrderByDescending(i => i.CreatedAt).ToList();
+    }
+
+    private void ApplyModeToColumns()
+    {
+        _lblTotalTitle.Text = _showPurchase ? "إجمالي المشتريات" : "إجمالي المبيعات";
+        _grid.Columns["colCustomer"].HeaderText = _showPurchase ? "المورد" : "اسم العميل";
+        _grid.Columns["colCar"].HeaderText = _showPurchase ? "طريقة الدفع" : "بيانات السيارة";
     }
 
     private void BindGrid()
     {
         _grid.Rows.Clear();
+        if (_showPurchase)
+        {
+            var purchasePage = _filteredPurchases.Skip(_page * PageSize).Take(PageSize).ToList();
+            foreach (var inv in purchasePage)
+            {
+                var row = _grid.Rows.Add(
+                    inv.Number,
+                    inv.CreatedAt.ToString("dd/MM/yyyy HH:mm"),
+                    inv.SupplierName,
+                    string.IsNullOrWhiteSpace(inv.PaymentMethod) ? "—" : inv.PaymentMethod,
+                    $"{inv.GrandTotal:N2} ج.م",
+                    _viewIcon,
+                    _printIcon);
+                _grid.Rows[row].Tag = inv.Id;
+            }
+
+            var purchasePages = Math.Max(1, (int)Math.Ceiling(_filteredPurchases.Count / (double)PageSize));
+            _lblPage.Text = $"صفحة {_page + 1} من {purchasePages}  •  {_filteredPurchases.Count} فاتورة";
+            return;
+        }
+
         var pageItems = _filtered.Skip(_page * PageSize).Take(PageSize).ToList();
         foreach (var inv in pageItems)
         {
@@ -358,13 +474,33 @@ internal sealed class InvoiceManagementForm : Form
             return;
         }
 
+        var col = _grid.Columns[e.ColumnIndex].Name;
+        if (_showPurchase)
+        {
+            var purchase = PurchaseInvoiceStore.All.FirstOrDefault(p => p.Id == id);
+            if (purchase is null)
+            {
+                return;
+            }
+
+            if (col == "colView")
+            {
+                OpenPurchaseDetails(purchase);
+            }
+            else if (col == "colPrint")
+            {
+                PrintPurchase(purchase);
+            }
+
+            return;
+        }
+
         var invoice = InvoiceStore.Find(id);
         if (invoice is null)
         {
             return;
         }
 
-        var col = _grid.Columns[e.ColumnIndex].Name;
         if (col == "colView")
         {
             OpenDetails(invoice);
@@ -372,6 +508,36 @@ internal sealed class InvoiceManagementForm : Form
         else if (col == "colPrint")
         {
             Reprint(invoice);
+        }
+    }
+
+    private void OnGridCellDoubleClick(object? sender, DataGridViewCellEventArgs e)
+    {
+        if (e.RowIndex < 0)
+        {
+            return;
+        }
+
+        if (_grid.Rows[e.RowIndex].Tag is not string id)
+        {
+            return;
+        }
+
+        if (_showPurchase)
+        {
+            var purchase = PurchaseInvoiceStore.All.FirstOrDefault(p => p.Id == id);
+            if (purchase is not null)
+            {
+                OpenPurchaseDetails(purchase);
+            }
+
+            return;
+        }
+
+        var invoice = InvoiceStore.Find(id);
+        if (invoice is not null)
+        {
+            OpenDetails(invoice);
         }
     }
 
@@ -385,6 +551,32 @@ internal sealed class InvoiceManagementForm : Form
         catch (Exception ex)
         {
             AppMessageDialog.Error(this, $"تعذر فتح التفاصيل.\r\n{ex.Message}", "عرض الفاتورة");
+        }
+    }
+
+    private void OpenPurchaseDetails(PurchaseInvoiceRecord invoice)
+    {
+        try
+        {
+            using var dlg = new PurchaseInvoiceDetailsDialog(invoice);
+            dlg.ShowDialog(FindForm());
+        }
+        catch (Exception ex)
+        {
+            AppMessageDialog.Error(this, $"تعذر فتح التفاصيل.\r\n{ex.Message}", "عرض الفاتورة");
+        }
+    }
+
+    private void PrintPurchase(PurchaseInvoiceRecord invoice)
+    {
+        try
+        {
+            PurchasePdfGenerator.GenerateAndOpen(invoice);
+            AppMessageDialog.Success(this, $"تم فتح فاتورة الشراء {invoice.Number} للطباعة.", "طباعة");
+        }
+        catch (Exception ex)
+        {
+            AppMessageDialog.Error(this, $"تعذر الطباعة.\r\n{ex.Message}", "طباعة");
         }
     }
 
@@ -422,7 +614,7 @@ internal sealed class InvoiceManagementForm : Form
         return $"{inv.CarModel} • {plate}";
     }
 
-    private static Control CreateStatCard(string title, Label valueLabel, string glyph)
+    private static Control CreateStatCard(string title, Label valueLabel, string glyph, Label? titleLabel = null)
     {
         var card = new Guna2Panel
         {
@@ -446,15 +638,13 @@ internal sealed class InvoiceManagementForm : Form
         };
 
         var texts = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
-        var titleLbl = new Label
-        {
-            Dock = DockStyle.Top,
-            Height = 20,
-            Text = title,
-            ForeColor = InvoiceTheme.Muted,
-            Font = InvoiceTheme.SmallFont,
-            TextAlign = ContentAlignment.MiddleLeft
-        };
+        var titleLbl = titleLabel ?? new Label();
+        titleLbl.Dock = DockStyle.Top;
+        titleLbl.Height = 20;
+        titleLbl.Text = title;
+        titleLbl.ForeColor = InvoiceTheme.Muted;
+        titleLbl.Font = InvoiceTheme.SmallFont;
+        titleLbl.TextAlign = ContentAlignment.MiddleLeft;
         valueLabel.Dock = DockStyle.Fill;
         valueLabel.ForeColor = InvoiceTheme.Gold;
         valueLabel.Font = InvoiceTheme.SectionFont;

@@ -8,12 +8,12 @@ namespace IbrahimAbdo.Login.Forms;
 internal sealed class ProductsForm : Form
 {
     private static readonly Color ProfitGreen = Color.FromArgb(80, 200, 120);
+    private static readonly Color SelectionDark = Color.FromArgb(18, 18, 18);
 
     private readonly System.Windows.Forms.Timer _clockTimer = new() { Interval = 1000 };
     private readonly bool _embedded;
     private Label _lblTime = null!;
     private Label _lblDate = null!;
-    private Label _lblNetProfit = null!;
     private Label _lblInventoryValue = null!;
     private Label _lblProductCount = null!;
     private Label _lblLowStock = null!;
@@ -39,19 +39,18 @@ internal sealed class ProductsForm : Form
     private Guna2TextBox _txtMinStock = null!;
     private Guna2TextBox _txtPurchase = null!;
     private Guna2TextBox _txtSelling = null!;
-    private PictureBox _imgPreview = null!;
-    private string? _pendingImagePath;
     private string? _editingId;
     private int _editingPreviousQty;
 
     private List<ProductRecord> _filtered = [];
     private int _page;
-    private const int PageSize = 8;
+    private const int PageSize = 11;
 
     public ProductsForm(bool embedded = false)
     {
         _embedded = embedded;
         SuspendLayout();
+        WindowTheme.Attach(this);
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = InvoiceTheme.Background;
@@ -112,8 +111,8 @@ internal sealed class ProductsForm : Form
             RowCount = 1,
             BackColor = Color.Transparent
         };
-        split.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70F));
-        split.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30F));
+        split.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 78F));
+        split.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 22F));
         split.Controls.Add(BuildLeftPane(), 0, 0);
         split.Controls.Add(BuildRightPane(), 1, 0);
         main.Controls.Add(split, 0, 1);
@@ -142,7 +141,6 @@ internal sealed class ProductsForm : Form
         };
         _lblDate = new Label { AutoSize = true, ForeColor = InvoiceTheme.Muted, Font = InvoiceTheme.SmallFont, Margin = new Padding(8, 8, 12, 0) };
         _lblTime = new Label { AutoSize = true, ForeColor = InvoiceTheme.Muted, Font = InvoiceTheme.SmallFont, Margin = new Padding(8, 8, 8, 0) };
-        right.Controls.Add(CreateChromeIcon("\uE7E7"));
         right.Controls.Add(_lblDate);
         right.Controls.Add(CreateChromeIcon("\uE121"));
         right.Controls.Add(_lblTime);
@@ -208,11 +206,11 @@ internal sealed class ProductsForm : Form
             Font = InvoiceTheme.BodyFont,
             PlaceholderText = "بحث بالاسم / الكود / الباركود",
             PlaceholderForeColor = InvoiceTheme.Muted,
-            Width = 240,
-            Height = 36,
+            Width = 320,
+            Height = 40,
             Margin = new Padding(0, 0, 8, 0),
-            IconLeft = GlyphHelper.Create("\uE721", InvoiceTheme.Gold, 14),
-            IconLeftSize = new Size(16, 16),
+            IconLeft = GlyphHelper.Create("\uE721", InvoiceTheme.Gold, 16),
+            IconLeftSize = new Size(18, 18),
             FocusedState = { BorderColor = InvoiceTheme.Gold }
         };
         _txtSearch.TextChanged += (_, _) => { _page = 0; RefreshData(); };
@@ -250,7 +248,6 @@ internal sealed class ProductsForm : Form
             BackColor = Color.Transparent,
             Margin = new Padding(0, 4, 0, 0)
         };
-        buttons.Controls.Add(CreateToolbarButton("+ إضافة صنف", true, (_, _) => BeginAddNew()));
         buttons.Controls.Add(CreateToolbarButton("تقرير المخزون", false, (_, _) => ExportReport()));
 
         bar.Controls.Add(filters, 0, 0);
@@ -263,28 +260,25 @@ internal sealed class ProductsForm : Form
         var row = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 5,
+            ColumnCount = 4,
             RowCount = 1,
             BackColor = Color.Transparent,
             Margin = new Padding(0, 4, 0, 4)
         };
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 28F));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 18F));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 18F));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 18F));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 18F));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
 
-        _lblNetProfit = new Label();
         _lblInventoryValue = new Label();
         _lblProductCount = new Label();
         _lblLowStock = new Label();
         _lblTotalSales = new Label();
 
-        row.Controls.Add(CreateStatCard("صافي الربح", _lblNetProfit, "\uE9D2", highlight: true), 0, 0);
-        row.Controls.Add(CreateStatCard("قيمة المخزون", _lblInventoryValue, "\uE8F1"), 1, 0);
-        row.Controls.Add(CreateStatCard("عدد الأصناف", _lblProductCount, "\uE81E"), 2, 0);
-        row.Controls.Add(CreateStatCard("أصناف منخفضة", _lblLowStock, "\uE7BA"), 3, 0);
-        row.Controls.Add(CreateStatCard("إجمالي المبيعات", _lblTotalSales, "\uE8A5"), 4, 0);
+        row.Controls.Add(CreateStatCard("قيمة المخزون", _lblInventoryValue, "\uE8F1"), 0, 0);
+        row.Controls.Add(CreateStatCard("عدد الأصناف", _lblProductCount, "\uE81E"), 1, 0);
+        row.Controls.Add(CreateStatCard("أصناف منخفضة", _lblLowStock, "\uE7BA"), 2, 0);
+        row.Controls.Add(CreateStatCard("إجمالي المبيعات", _lblTotalSales, "\uE8A5"), 3, 0);
         return row;
     }
 
@@ -311,13 +305,14 @@ internal sealed class ProductsForm : Form
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "colBuy", HeaderText = "سعر الشراء", FillWeight = 8 });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "colSell", HeaderText = "سعر البيع", FillWeight = 8 });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "colProfitItem", HeaderText = "ربح القطعة", FillWeight = 8 });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "colProfitTotal", HeaderText = "إجمالي الربح", FillWeight = 8 });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "colSupplier", HeaderText = "المورد", FillWeight = 10 });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "colUpdated", HeaderText = "آخر تحديث", FillWeight = 8 });
         _grid.Columns.Add(new DataGridViewImageColumn { Name = "colEdit", HeaderText = "إجراء", FillWeight = 5, Image = _editIcon, ImageLayout = DataGridViewImageCellLayout.Zoom });
         _grid.Columns.Add(new DataGridViewImageColumn { Name = "colDelete", HeaderText = "", FillWeight = 5, Image = _deleteIcon, ImageLayout = DataGridViewImageCellLayout.Zoom });
         _grid.CellFormatting += OnGridCellFormatting;
         _grid.CellClick += OnGridCellClick;
+        _grid.CellDoubleClick += OnGridCellDoubleClick;
+        _grid.SelectionChanged += (_, _) => _grid.Invalidate();
         EnableDoubleBuffering(_grid);
 
         card.Controls.Add(_grid);
@@ -402,9 +397,30 @@ internal sealed class ProductsForm : Form
         addColumns(grid);
         EnableDoubleBuffering(grid);
 
+        var g = grid;
+        g.CellFormatting += OnMiniGridCellFormatting;
+        g.SelectionChanged += (_, _) => g.Invalidate();
+
         card.Controls.Add(grid);
         card.Controls.Add(header);
         return card;
+    }
+
+    private void OnMiniGridCellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
+    {
+        if (sender is not DataGridView g || e.RowIndex < 0 || e.ColumnIndex < 0)
+        {
+            return;
+        }
+
+        e.CellStyle!.SelectionForeColor = e.CellStyle.ForeColor;
+        e.CellStyle.SelectionBackColor = SelectionDark;
+
+        if (g.Rows[e.RowIndex].Selected)
+        {
+            var baseFont = e.CellStyle.Font ?? InvoiceTheme.BodyFont;
+            e.CellStyle.Font = new Font(baseFont, FontStyle.Bold);
+        }
     }
 
     private static void BuildLowStockColumns(DataGridView g)
@@ -429,16 +445,16 @@ internal sealed class ProductsForm : Form
             Dock = DockStyle.Fill,
             AutoScroll = true,
             BackColor = Color.Transparent,
-            Margin = new Padding(6, 0, 0, 0),
-            Padding = new Padding(4, 8, 8, 8)
+            Margin = new Padding(0, 0, 0, 0),
+            Padding = new Padding(0, 8, 0, 8)
         };
 
         var card = new Guna2Panel
         {
-            Width = 312,
+            Dock = DockStyle.Top,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            MinimumSize = new Size(312, 620),
+            MinimumSize = new Size(0, 620),
             FillColor = InvoiceTheme.Card,
             BorderColor = InvoiceTheme.CardBorder,
             BorderThickness = 1,
@@ -481,39 +497,6 @@ internal sealed class ProductsForm : Form
         _txtPurchase = AddFormField(body, "سعر الشراء", "0.00");
         _txtSelling = AddFormField(body, "سعر البيع", "0.00");
 
-        var imgHost = new Panel { Dock = DockStyle.Top, Height = 118, Margin = new Padding(0, 6, 0, 6), BackColor = Color.Transparent };
-        var imgLbl = new Label
-        {
-            Dock = DockStyle.Top,
-            Height = 20,
-            Text = "صورة الصنف",
-            ForeColor = InvoiceTheme.Muted,
-            Font = InvoiceTheme.SmallFont
-        };
-        var imgRow = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
-            BackColor = Color.Transparent,
-            Padding = new Padding(0, 4, 0, 0)
-        };
-        _imgPreview = new PictureBox
-        {
-            Width = 72,
-            Height = 72,
-            BorderStyle = BorderStyle.FixedSingle,
-            BackColor = InvoiceTheme.InputFill,
-            SizeMode = PictureBoxSizeMode.Zoom,
-            Margin = new Padding(0, 0, 10, 0)
-        };
-        var uploadBtn = CreateToolbarButton("رفع صورة", false, (_, _) => PickImage());
-        uploadBtn.Margin = new Padding(0, 18, 0, 0);
-        imgRow.Controls.Add(_imgPreview);
-        imgRow.Controls.Add(uploadBtn);
-        imgHost.Controls.Add(imgRow);
-        imgHost.Controls.Add(imgLbl);
-
         var actions = new FlowLayoutPanel
         {
             Dock = DockStyle.Top,
@@ -527,7 +510,6 @@ internal sealed class ProductsForm : Form
         actions.Controls.Add(CreateToolbarButton("إلغاء", false, (_, _) => BeginAddNew()));
 
         card.Controls.Add(actions);
-        card.Controls.Add(imgHost);
         card.Controls.Add(body);
         card.Controls.Add(_formTitle);
         scroll.Controls.Add(card);
@@ -544,7 +526,6 @@ internal sealed class ProductsForm : Form
             _page = 0;
         }
 
-        _lblNetProfit.Text = FormatMoney(ProductStore.NetProfit);
         _lblInventoryValue.Text = FormatMoney(ProductStore.InventoryValue);
         _lblProductCount.Text = ProductStore.ProductCount.ToString();
         _lblLowStock.Text = ProductStore.LowStockCount.ToString();
@@ -572,7 +553,6 @@ internal sealed class ProductsForm : Form
                 FormatMoney(p.PurchasePrice),
                 FormatMoney(p.SellingPrice),
                 FormatMoney(p.ProfitPerItem),
-                FormatMoney(p.TotalProfit),
                 p.Supplier,
                 p.UpdatedAt.ToString("dd/MM/yyyy"),
                 _editIcon,
@@ -604,8 +584,7 @@ internal sealed class ProductsForm : Form
                 m.Type == "Stock In" ? "دخول" : "خروج",
                 m.Quantity,
                 m.At.ToString("dd/MM HH:mm"));
-            _movementsGrid.Rows[r].DefaultCellStyle.ForeColor =
-                m.Type == "Stock In" ? ProfitGreen : InvoiceTheme.Danger;
+            _movementsGrid.Rows[r].DefaultCellStyle.ForeColor = ProfitGreen;
         }
     }
 
@@ -617,7 +596,7 @@ internal sealed class ProductsForm : Form
         }
 
         var col = _grid.Columns[e.ColumnIndex].Name;
-        if (col is "colProfitItem" or "colProfitTotal")
+        if (col is "colProfitItem")
         {
             e.CellStyle!.ForeColor = ProfitGreen;
         }
@@ -628,6 +607,17 @@ internal sealed class ProductsForm : Form
                 e.CellStyle!.ForeColor = InvoiceTheme.Danger;
                 e.CellStyle.Font = new Font(InvoiceTheme.BodyFont, FontStyle.Bold);
             }
+        }
+
+        // On selection keep each cell's own text color and just darken the background.
+        e.CellStyle!.SelectionForeColor = e.CellStyle.ForeColor;
+        e.CellStyle.SelectionBackColor = SelectionDark;
+
+        // Bold the text of the row the user is standing on.
+        if (_grid.Rows[e.RowIndex].Selected)
+        {
+            var baseFont = e.CellStyle.Font ?? InvoiceTheme.BodyFont;
+            e.CellStyle.Font = new Font(baseFont, FontStyle.Bold);
         }
     }
 
@@ -654,11 +644,32 @@ internal sealed class ProductsForm : Form
         }
     }
 
+    private void OnGridCellDoubleClick(object? sender, DataGridViewCellEventArgs e)
+    {
+        if (e.RowIndex < 0)
+        {
+            return;
+        }
+
+        var col = e.ColumnIndex >= 0 ? _grid.Columns[e.ColumnIndex].Name : "";
+        if (col is "colEdit" or "colDelete")
+        {
+            return;
+        }
+
+        if (_grid.Rows[e.RowIndex].Tag is not string id || ProductStore.Find(id) is not { } product)
+        {
+            return;
+        }
+
+        using var dlg = new ProductMovementsDialog(product);
+        dlg.ShowDialog(this);
+    }
+
     private void BeginAddNew()
     {
         _editingId = null;
         _editingPreviousQty = 0;
-        _pendingImagePath = null;
         _formTitle.Text = "إضافة صنف جديد";
         _txtName.Text = "";
         _txtCode.Text = "";
@@ -670,7 +681,6 @@ internal sealed class ProductsForm : Form
         _txtMinStock.Text = "5";
         _txtPurchase.Text = "";
         _txtSelling.Text = "";
-        _imgPreview.Image = null;
     }
 
     private void LoadForEdit(string id)
@@ -683,7 +693,6 @@ internal sealed class ProductsForm : Form
 
         _editingId = p.Id;
         _editingPreviousQty = p.Quantity;
-        _pendingImagePath = p.ImagePath;
         _formTitle.Text = "تعديل الصنف";
         _txtName.Text = p.Name;
         _txtCode.Text = p.Code;
@@ -695,7 +704,6 @@ internal sealed class ProductsForm : Form
         _txtMinStock.Text = p.MinStock.ToString();
         _txtPurchase.Text = p.PurchasePrice.ToString("0.##");
         _txtSelling.Text = p.SellingPrice.ToString("0.##");
-        LoadPreview(p.ImagePath);
     }
 
     private void SaveProduct()
@@ -756,7 +764,6 @@ internal sealed class ProductsForm : Form
             existing.MinStock = min;
             existing.PurchasePrice = buy;
             existing.SellingPrice = sell;
-            existing.ImagePath = PersistImage(_editingId, _pendingImagePath) ?? existing.ImagePath;
             ProductStore.Update(existing, _editingPreviousQty);
             AppMessageDialog.Success(this, "تم تحديث الصنف بنجاح", "الأصناف");
         }
@@ -775,7 +782,6 @@ internal sealed class ProductsForm : Form
                 PurchasePrice = buy,
                 SellingPrice = sell
             };
-            product.ImagePath = PersistImage(product.Id, _pendingImagePath);
             ProductStore.Add(product);
             AppMessageDialog.Success(this, "تم حفظ الصنف بنجاح", "الأصناف");
         }
@@ -792,12 +798,7 @@ internal sealed class ProductsForm : Form
             return;
         }
 
-        var confirm = MessageBox.Show(this,
-            $"حذف الصنف «{p.Name}»؟",
-            "تأكيد الحذف",
-            MessageBoxButtons.YesNo,
-            MessageBoxIcon.Warning);
-        if (confirm != DialogResult.Yes)
+        if (!AppMessageDialog.Confirm(this, $"حذف الصنف «{p.Name}»؟", "تأكيد الحذف"))
         {
             return;
         }
@@ -809,72 +810,6 @@ internal sealed class ProductsForm : Form
         }
 
         RefreshData();
-    }
-
-    private void PickImage()
-    {
-        using var dlg = new OpenFileDialog
-        {
-            Filter = "Images|*.png;*.jpg;*.jpeg;*.bmp;*.webp",
-            Title = "اختر صورة الصنف"
-        };
-        if (dlg.ShowDialog(this) != DialogResult.OK)
-        {
-            return;
-        }
-
-        _pendingImagePath = dlg.FileName;
-        LoadPreview(_pendingImagePath);
-    }
-
-    private void LoadPreview(string? path)
-    {
-        try
-        {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
-            {
-                _imgPreview.Image = null;
-                return;
-            }
-
-            using var fs = File.OpenRead(path);
-            _imgPreview.Image = Image.FromStream(fs);
-        }
-        catch
-        {
-            _imgPreview.Image = null;
-        }
-    }
-
-    private static string? PersistImage(string productId, string? sourcePath)
-    {
-        if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath))
-        {
-            return null;
-        }
-
-        try
-        {
-            var dir = Path.Combine(AppContext.BaseDirectory, "Data", "ProductImages");
-            Directory.CreateDirectory(dir);
-            var ext = Path.GetExtension(sourcePath);
-            if (string.IsNullOrWhiteSpace(ext))
-            {
-                ext = ".png";
-            }
-
-            var dest = Path.Combine(dir, productId + ext);
-            if (!string.Equals(Path.GetFullPath(sourcePath), Path.GetFullPath(dest), StringComparison.OrdinalIgnoreCase))
-            {
-                File.Copy(sourcePath, dest, overwrite: true);
-            }
-
-            return dest;
-        }
-        catch
-        {
-            return sourcePath;
-        }
     }
 
     private void ExportReport()
@@ -1064,10 +999,11 @@ internal sealed class ProductsForm : Form
             Dock = DockStyle.Fill,
             BackgroundColor = InvoiceTheme.Card,
             BorderStyle = BorderStyle.None,
-            CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
+            CellBorderStyle = DataGridViewCellBorderStyle.Single,
             ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None,
             EnableHeadersVisualStyles = false,
             GridColor = InvoiceTheme.CardBorder,
+            RightToLeft = RightToLeft.Yes,
             RowHeadersVisible = false,
             AllowUserToAddRows = false,
             AllowUserToDeleteRows = false,
@@ -1099,12 +1035,36 @@ internal sealed class ProductsForm : Form
                 BackColor = Color.FromArgb(30, 30, 30),
                 ForeColor = InvoiceTheme.Gold,
                 Font = InvoiceTheme.TableHeaderFont,
-                Alignment = DataGridViewContentAlignment.MiddleLeft,
+                Alignment = DataGridViewContentAlignment.MiddleRight,
                 Padding = new Padding(4, 0, 4, 0)
             },
             ColumnHeadersHeight = 34
         };
+        if (g.IsHandleCreated)
+        {
+            TrySetDarkScrollbars(g);
+        }
+        else
+        {
+            g.HandleCreated += (_, _) => TrySetDarkScrollbars(g);
+        }
+
         return g;
+    }
+
+    [System.Runtime.InteropServices.DllImport("uxtheme.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int SetWindowTheme(IntPtr hWnd, string pszSubAppName, string? pszSubIdList);
+
+    private static void TrySetDarkScrollbars(Control control)
+    {
+        try
+        {
+            SetWindowTheme(control.Handle, "DarkMode_Explorer", null);
+        }
+        catch
+        {
+            // theming not available; ignore
+        }
     }
 
     private static Guna2Button CreateToolbarButton(string text, bool primary, EventHandler onClick)

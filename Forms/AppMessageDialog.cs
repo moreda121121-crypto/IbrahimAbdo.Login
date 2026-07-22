@@ -14,9 +14,10 @@ internal enum AppMessageKind
 
 internal sealed class AppMessageDialog : Form
 {
-    private AppMessageDialog(string title, string message, AppMessageKind kind)
+    private AppMessageDialog(string title, string message, AppMessageKind kind, bool confirm)
     {
         SuspendLayout();
+        WindowTheme.Attach(this);
         AutoScaleMode = AutoScaleMode.Dpi;
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.CenterParent;
@@ -26,7 +27,7 @@ internal sealed class AppMessageDialog : Form
         BackColor = InvoiceTheme.Card;
         ForeColor = InvoiceTheme.White;
         Font = InvoiceTheme.BodyFont;
-        ClientSize = new Size(440, 250);
+        ClientSize = new Size(440, confirm ? 260 : 250);
 
         var accent = kind switch
         {
@@ -117,34 +118,48 @@ internal sealed class AppMessageDialog : Form
         };
 
         var footer = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
-        var ok = new Guna2Button
+
+        if (confirm)
         {
-            Text = "موافق",
-            Size = new Size(150, 42),
-            BorderRadius = 10,
-            Font = new Font(InvoiceTheme.Family.FontFamily, 11F, FontStyle.Bold, GraphicsUnit.Point),
-            FillColor = accent,
-            ForeColor = kind is AppMessageKind.Warning or AppMessageKind.Info ? Color.Black : Color.White,
-            Cursor = Cursors.Hand,
-            Animated = true,
-            Anchor = AnchorStyles.None,
-            HoverState =
+            var yes = CreateButton("نعم", accent, kind, primary: true);
+            var no = CreateOutlineButton("لا");
+            yes.Click += (_, _) =>
             {
-                FillColor = ControlPaint.Light(accent, 0.12F),
-                ForeColor = kind is AppMessageKind.Warning or AppMessageKind.Info ? Color.Black : Color.White
-            }
-        };
-        footer.Resize += (_, _) =>
+                DialogResult = DialogResult.Yes;
+                Close();
+            };
+            no.Click += (_, _) =>
+            {
+                DialogResult = DialogResult.No;
+                Close();
+            };
+            footer.Resize += (_, _) =>
+            {
+                const int gap = 12;
+                var total = yes.Width + gap + no.Width;
+                yes.Left = (footer.ClientSize.Width - total) / 2;
+                yes.Top = Math.Max(0, (footer.ClientSize.Height - yes.Height) / 2);
+                no.Left = yes.Right + gap;
+                no.Top = yes.Top;
+            };
+            footer.Controls.Add(yes);
+            footer.Controls.Add(no);
+        }
+        else
         {
-            ok.Left = (footer.ClientSize.Width - ok.Width) / 2;
-            ok.Top = Math.Max(0, (footer.ClientSize.Height - ok.Height) / 2);
-        };
-        ok.Click += (_, _) =>
-        {
-            DialogResult = DialogResult.OK;
-            Close();
-        };
-        footer.Controls.Add(ok);
+            var ok = CreateButton("موافق", accent, kind, primary: true);
+            ok.Click += (_, _) =>
+            {
+                DialogResult = DialogResult.OK;
+                Close();
+            };
+            footer.Resize += (_, _) =>
+            {
+                ok.Left = (footer.ClientSize.Width - ok.Width) / 2;
+                ok.Top = Math.Max(0, (footer.ClientSize.Height - ok.Height) / 2);
+            };
+            footer.Controls.Add(ok);
+        }
 
         root.Controls.Add(iconHost, 0, 0);
         root.Controls.Add(titleLbl, 0, 1);
@@ -156,7 +171,20 @@ internal sealed class AppMessageDialog : Form
         KeyPreview = true;
         KeyDown += (_, e) =>
         {
-            if (e.KeyCode is Keys.Enter or Keys.Escape)
+            if (confirm)
+            {
+                if (e.KeyCode == Keys.Enter)
+                {
+                    DialogResult = DialogResult.Yes;
+                    Close();
+                }
+                else if (e.KeyCode == Keys.Escape)
+                {
+                    DialogResult = DialogResult.No;
+                    Close();
+                }
+            }
+            else if (e.KeyCode is Keys.Enter or Keys.Escape)
             {
                 DialogResult = DialogResult.OK;
                 Close();
@@ -166,9 +194,54 @@ internal sealed class AppMessageDialog : Form
         ResumeLayout(true);
     }
 
+    private static Guna2Button CreateButton(string text, Color accent, AppMessageKind kind, bool primary)
+    {
+        var darkText = kind is AppMessageKind.Warning or AppMessageKind.Info;
+        return new Guna2Button
+        {
+            Text = text,
+            Size = new Size(primary ? 130 : 120, 42),
+            BorderRadius = 10,
+            Font = new Font(InvoiceTheme.Family.FontFamily, 11F, FontStyle.Bold, GraphicsUnit.Point),
+            FillColor = accent,
+            ForeColor = darkText ? Color.Black : Color.White,
+            Cursor = Cursors.Hand,
+            Animated = true,
+            Anchor = AnchorStyles.None,
+            HoverState =
+            {
+                FillColor = ControlPaint.Light(accent, 0.12F),
+                ForeColor = darkText ? Color.Black : Color.White
+            }
+        };
+    }
+
+    private static Guna2Button CreateOutlineButton(string text)
+    {
+        return new Guna2Button
+        {
+            Text = text,
+            Size = new Size(120, 42),
+            BorderRadius = 10,
+            Font = new Font(InvoiceTheme.Family.FontFamily, 11F, FontStyle.Bold, GraphicsUnit.Point),
+            FillColor = InvoiceTheme.Card,
+            ForeColor = InvoiceTheme.White,
+            BorderColor = InvoiceTheme.Gold,
+            BorderThickness = 1,
+            Cursor = Cursors.Hand,
+            Animated = true,
+            Anchor = AnchorStyles.None,
+            HoverState =
+            {
+                FillColor = Color.FromArgb(30, InvoiceTheme.Gold),
+                ForeColor = InvoiceTheme.White
+            }
+        };
+    }
+
     public static void Show(IWin32Window? owner, string message, string title, AppMessageKind kind = AppMessageKind.Info)
     {
-        using var dlg = new AppMessageDialog(title, message, kind);
+        using var dlg = new AppMessageDialog(title, message, kind, confirm: false);
         if (owner is not null)
         {
             dlg.ShowDialog(owner);
@@ -177,6 +250,13 @@ internal sealed class AppMessageDialog : Form
         {
             dlg.ShowDialog();
         }
+    }
+
+    public static bool Confirm(IWin32Window? owner, string message, string title = "تأكيد", AppMessageKind kind = AppMessageKind.Warning)
+    {
+        using var dlg = new AppMessageDialog(title, message, kind, confirm: true);
+        var result = owner is not null ? dlg.ShowDialog(owner) : dlg.ShowDialog();
+        return result == DialogResult.Yes;
     }
 
     public static void Success(IWin32Window? owner, string message, string title = "نجاح") =>

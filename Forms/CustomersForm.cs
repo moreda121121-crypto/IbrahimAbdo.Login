@@ -41,6 +41,7 @@ internal sealed class CustomersForm : Form
     {
         _embedded = embedded;
         SuspendLayout();
+        WindowTheme.Attach(this);
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
         BackColor = InvoiceTheme.Background;
@@ -236,7 +237,7 @@ internal sealed class CustomersForm : Form
             }
             else if (key != "customers")
             {
-                MessageBox.Show(this, $"صفحة «{text}» قريباً.", "قريباً", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                AppMessageDialog.Info(this, $"صفحة «{text}» قريباً.", "قريباً");
             }
         }
 
@@ -304,7 +305,6 @@ internal sealed class CustomersForm : Form
         };
         _lblDate = new Label { AutoSize = true, ForeColor = InvoiceTheme.Muted, Font = InvoiceTheme.SmallFont, Margin = new Padding(8, 8, 12, 0) };
         _lblTime = new Label { AutoSize = true, ForeColor = InvoiceTheme.Muted, Font = InvoiceTheme.SmallFont, Margin = new Padding(8, 8, 8, 0) };
-        right.Controls.Add(CreateChromeIcon("\uE7E7"));
         right.Controls.Add(_lblDate);
         right.Controls.Add(CreateChromeIcon("\uE121"));
         right.Controls.Add(_lblTime);
@@ -361,11 +361,11 @@ internal sealed class CustomersForm : Form
             PlaceholderText = "بحث بالاسم / الهاتف / رقم اللوحة",
             PlaceholderForeColor = InvoiceTheme.Muted,
             Dock = DockStyle.Left,
-            Width = 320,
-            Height = 36,
+            Width = 520,
+            Height = 40,
             Margin = new Padding(0, 4, 8, 0),
-            IconLeft = GlyphHelper.Create("\uE721", InvoiceTheme.Gold, 14),
-            IconLeftSize = new Size(16, 16),
+            IconLeft = GlyphHelper.Create("\uE721", InvoiceTheme.Gold, 16),
+            IconLeftSize = new Size(18, 18),
             FocusedState = { BorderColor = InvoiceTheme.Gold }
         };
         _txtSearch.TextChanged += (_, _) => { _page = 0; RefreshData(); };
@@ -383,8 +383,8 @@ internal sealed class CustomersForm : Form
             Anchor = AnchorStyles.Right
         };
         buttons.Controls.Add(CreateToolbarButton("+ إضافة عميل", true, (_, _) => OpenAddCustomer()));
-        buttons.Controls.Add(CreateToolbarButton("طباعة", false, (_, _) => MessageBox.Show(this, "طباعة قائمة العملاء", "طباعة")));
-        buttons.Controls.Add(CreateToolbarButton("تصدير Excel", false, (_, _) => MessageBox.Show(this, "تم تجهيز التصدير", "تصدير")));
+        buttons.Controls.Add(CreateToolbarButton("طباعة", false, (_, _) => PrintCustomers()));
+        buttons.Controls.Add(CreateToolbarButton("تصدير Excel", false, (_, _) => ExportCustomers()));
 
         bar.Controls.Add(_txtSearch, 0, 0);
         bar.Controls.Add(buttons, 1, 0);
@@ -616,11 +616,11 @@ internal sealed class CustomersForm : Form
         {
             if (_selected is null)
             {
-                MessageBox.Show(this, "اختر عميلاً أولاً.", "تنبيه", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                AppMessageDialog.Warning(this, "اختر عميلاً أولاً.");
                 return;
             }
 
-            MessageBox.Show(this, "استخدم «إضافة عميل» لإضافة سيارات متعددة، أو حدّث من التعديل.", "إضافة سيارة");
+            AppMessageDialog.Info(this, "استخدم «إضافة عميل» لإضافة سيارات متعددة، أو حدّث من التعديل.", "إضافة سيارة");
         };
 
         _carsGrid = CreateMiniGrid();
@@ -772,7 +772,7 @@ internal sealed class CustomersForm : Form
         var col = _grid.Columns[e.ColumnIndex].Name;
         if (col == "colDelete")
         {
-            if (MessageBox.Show(this, $"حذف العميل «{customer.Name}»؟", "تأكيد", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+            if (AppMessageDialog.Confirm(this, $"حذف العميل «{customer.Name}»؟"))
             {
                 CustomerStore.Remove(customer.Id);
                 RefreshData();
@@ -780,7 +780,7 @@ internal sealed class CustomersForm : Form
         }
         else if (col == "colEdit")
         {
-            MessageBox.Show(this, $"تعديل: {customer.Name}", "تعديل عميل");
+            OpenEditCustomer(customer);
         }
         else if (col == "colView")
         {
@@ -802,15 +802,33 @@ internal sealed class CustomersForm : Form
             car.PlateNumber, car.Brand, car.Model, car.Year.ToString()
         }));
 
-        BindMiniGrid(_invoicesGrid, c.Invoices.OrderByDescending(i => i.Date).Take(5).Select(inv => new object[]
+        var customerInvoices = InvoiceStore.All
+            .Where(i => (!string.IsNullOrWhiteSpace(c.Phone) &&
+                         i.Phone.Trim() == c.Phone.Trim()) ||
+                        (!string.IsNullOrWhiteSpace(c.Name) &&
+                         i.CustomerName.Trim() == c.Name.Trim()))
+            .OrderByDescending(i => i.CreatedAt)
+            .ToList();
+
+        BindMiniGrid(_invoicesGrid, customerInvoices.Take(5).Select(inv => new object[]
         {
-            inv.Number, inv.Date.ToString("dd/MM/yyyy"), inv.Amount.ToString("N2"), inv.Status
+            inv.Number,
+            inv.CreatedAt.ToString("dd/MM/yyyy"),
+            inv.GrandTotal.ToString("N2"),
+            inv.Remaining <= 0 ? "مدفوعة" : "آجل"
         }));
 
-        BindMiniGrid(_servicesGrid, c.Services.OrderByDescending(s => s.Date).Take(5).Select(svc => new object[]
-        {
-            svc.Date.ToString("dd/MM/yyyy"), svc.Service, svc.Technician, svc.Status
-        }));
+        BindMiniGrid(_servicesGrid, customerInvoices
+            .SelectMany(inv => inv.Items
+                .Where(it => !string.IsNullOrWhiteSpace(it.Name))
+                .Select(it => new object[]
+                {
+                    inv.CreatedAt.ToString("dd/MM/yyyy"),
+                    it.Name,
+                    inv.Technician,
+                    inv.Remaining <= 0 ? "مكتمل" : "قيد التنفيذ"
+                }))
+            .Take(5));
     }
 
     private static void BindMiniGrid(DataGridView grid, IEnumerable<object[]> rows)
@@ -849,6 +867,56 @@ internal sealed class CustomersForm : Form
             CustomerStore.Add(dlg.Result);
             _page = 0;
             RefreshData();
+        }
+    }
+
+    private void PrintCustomers()
+    {
+        var customers = CustomerStore.All.ToList();
+        if (customers.Count == 0)
+        {
+            AppMessageDialog.Warning(this, "لا يوجد عملاء للطباعة.");
+            return;
+        }
+
+        try
+        {
+            CustomersPdfGenerator.GenerateAndOpen(customers);
+        }
+        catch (Exception ex)
+        {
+            AppMessageDialog.Error(this, $"تعذر إنشاء ملف الطباعة.\r\n{ex.Message}", "طباعة");
+        }
+    }
+
+    private void ExportCustomers()
+    {
+        var customers = CustomerStore.All.ToList();
+        if (customers.Count == 0)
+        {
+            AppMessageDialog.Warning(this, "لا يوجد عملاء للتصدير.");
+            return;
+        }
+
+        try
+        {
+            CustomersExcelExporter.Export(customers);
+        }
+        catch (Exception ex)
+        {
+            AppMessageDialog.Error(this, $"تعذر تصدير ملف Excel.\r\n{ex.Message}", "تصدير Excel");
+        }
+    }
+
+    private void OpenEditCustomer(CustomerRecord customer)
+    {
+        using var dlg = new AddCustomerDialog(customer);
+        if (dlg.ShowDialog(this) == DialogResult.OK && dlg.Result is not null)
+        {
+            CustomerStore.Update(dlg.Result);
+            RefreshData();
+            _selected = dlg.Result;
+            ShowDetails(dlg.Result);
         }
     }
 

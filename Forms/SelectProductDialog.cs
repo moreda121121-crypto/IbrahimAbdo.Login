@@ -19,6 +19,7 @@ internal sealed class SelectProductDialog : Form
     {
         _forPurchase = forPurchase;
         SuspendLayout();
+        WindowTheme.Attach(this);
         AutoScaleMode = AutoScaleMode.Dpi;
         Text = forPurchase ? "اختيار صنف للشراء" : "اختيار صنف من المخزون";
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -66,9 +67,9 @@ internal sealed class SelectProductDialog : Form
         var card = new Guna2Panel
         {
             Dock = DockStyle.Fill,
-            FillColor = InvoiceTheme.Card,
-            BorderColor = InvoiceTheme.CardBorder,
-            BorderThickness = 1,
+            FillColor = InvoiceTheme.Background,
+            BorderColor = InvoiceTheme.Background,
+            BorderThickness = 0,
             BorderRadius = InvoiceTheme.Radius,
             Padding = new Padding(8),
             Margin = new Padding(0, 8, 0, 8)
@@ -77,7 +78,7 @@ internal sealed class SelectProductDialog : Form
         _grid = new DataGridView
         {
             Dock = DockStyle.Fill,
-            BackgroundColor = InvoiceTheme.Card,
+            BackgroundColor = InvoiceTheme.Background,
             BorderStyle = BorderStyle.None,
             CellBorderStyle = DataGridViewCellBorderStyle.SingleHorizontal,
             ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.None,
@@ -95,26 +96,29 @@ internal sealed class SelectProductDialog : Form
             ForeColor = InvoiceTheme.White,
             DefaultCellStyle = new DataGridViewCellStyle
             {
-                BackColor = InvoiceTheme.Card,
+                BackColor = InvoiceTheme.Background,
                 ForeColor = InvoiceTheme.White,
-                SelectionBackColor = Color.FromArgb(48, InvoiceTheme.Gold),
+                SelectionBackColor = Color.FromArgb(40, 40, 40),
                 SelectionForeColor = InvoiceTheme.White
             },
             AlternatingRowsDefaultCellStyle = new DataGridViewCellStyle
             {
-                BackColor = InvoiceTheme.RowAlt,
+                BackColor = InvoiceTheme.Background,
                 ForeColor = InvoiceTheme.White,
-                SelectionBackColor = Color.FromArgb(48, InvoiceTheme.Gold),
+                SelectionBackColor = Color.FromArgb(40, 40, 40),
                 SelectionForeColor = InvoiceTheme.White
             },
             ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle
             {
-                BackColor = Color.FromArgb(30, 30, 30),
+                BackColor = InvoiceTheme.Background,
                 ForeColor = InvoiceTheme.Gold,
                 Font = InvoiceTheme.TableHeaderFont
             },
             ColumnHeadersHeight = 34
         };
+        _grid.HandleCreated += (_, _) => TrySetDarkScrollbars(_grid);
+        _grid.CellFormatting += OnGridCellFormatting;
+        _grid.SelectionChanged += (_, _) => _grid.Invalidate();
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "colCode", HeaderText = "الكود", FillWeight = 14 });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "colName", HeaderText = "اسم الصنف", FillWeight = 28 });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "colCat", HeaderText = "التصنيف", FillWeight = 14 });
@@ -134,12 +138,17 @@ internal sealed class SelectProductDialog : Form
         };
         card.Controls.Add(_grid);
 
-        var footer = new FlowLayoutPanel
+        var footer = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Color.Transparent,
+            Padding = new Padding(0, 6, 0, 0)
+        };
+        var rightGroup = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.RightToLeft,
-            BackColor = Color.Transparent,
-            Padding = new Padding(0, 6, 0, 0)
+            BackColor = Color.Transparent
         };
         var btnOk = new Guna2Button
         {
@@ -167,8 +176,28 @@ internal sealed class SelectProductDialog : Form
             Cursor = Cursors.Hand
         };
         btnCancel.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
-        footer.Controls.Add(btnOk);
-        footer.Controls.Add(btnCancel);
+        rightGroup.Controls.Add(btnOk);
+        rightGroup.Controls.Add(btnCancel);
+
+        var btnNew = new Guna2Button
+        {
+            Dock = DockStyle.Left,
+            Width = 175,
+            Text = "+ إضافة صنف جديد",
+            Font = InvoiceTheme.MenuFont,
+            ForeColor = InvoiceTheme.White,
+            FillColor = InvoiceTheme.Card,
+            BorderColor = InvoiceTheme.Gold,
+            BorderThickness = 1,
+            BorderRadius = 8,
+            Cursor = Cursors.Hand,
+            Margin = new Padding(0, 0, 8, 0),
+            HoverState = { FillColor = InvoiceTheme.Gold, BorderColor = InvoiceTheme.Gold, ForeColor = Color.Black }
+        };
+        btnNew.Click += (_, _) => OpenAddProduct();
+
+        footer.Controls.Add(rightGroup);
+        footer.Controls.Add(btnNew);
 
         root.Controls.Add(_txtSearch, 0, 0);
         root.Controls.Add(card, 0, 1);
@@ -220,5 +249,65 @@ internal sealed class SelectProductDialog : Form
         Selected = product;
         DialogResult = DialogResult.OK;
         Close();
+    }
+
+    private void OnGridCellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
+    {
+        if (e.RowIndex < 0 || e.RowIndex >= _grid.Rows.Count)
+        {
+            return;
+        }
+
+        e.CellStyle!.SelectionBackColor = Color.FromArgb(40, 40, 40);
+        e.CellStyle.SelectionForeColor = e.CellStyle.ForeColor;
+
+        if (_grid.Rows[e.RowIndex].Selected)
+        {
+            e.CellStyle.Font = new Font(e.CellStyle.Font ?? _grid.Font, FontStyle.Bold);
+        }
+    }
+
+    private void OpenAddProduct()
+    {
+        using var dlg = new AddProductDialog();
+        if (dlg.ShowDialog(this) != DialogResult.OK || dlg.Result is null)
+        {
+            return;
+        }
+
+        BindGrid();
+        for (var i = 0; i < _grid.Rows.Count; i++)
+        {
+            if (_grid.Rows[i].Tag is ProductRecord p && p.Id == dlg.Result.Id)
+            {
+                _grid.ClearSelection();
+                _grid.Rows[i].Selected = true;
+                _grid.CurrentCell = _grid.Rows[i].Cells[0];
+                break;
+            }
+        }
+    }
+
+    [System.Runtime.InteropServices.DllImport("uxtheme.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int SetWindowTheme(IntPtr hWnd, string pszSubAppName, string? pszSubIdList);
+
+    private static void TrySetDarkScrollbars(Control control)
+    {
+        try
+        {
+            SetWindowTheme(control.Handle, "DarkMode_Explorer", null);
+            foreach (Control child in control.Controls)
+            {
+                if (child is ScrollBar)
+                {
+                    SetWindowTheme(child.Handle, "DarkMode_Explorer", null);
+                    child.BackColor = InvoiceTheme.Background;
+                }
+            }
+        }
+        catch
+        {
+            // theming not available; ignore
+        }
     }
 }

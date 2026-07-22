@@ -1,21 +1,20 @@
 namespace IbrahimAbdo.Login.Data;
 
-internal sealed class TechnicianRecord
+internal sealed class SupplierRecord
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "";
     public string Phone { get; set; } = "";
-    public string Address { get; set; } = "";
     public DateTime CreatedAt { get; set; } = DateTime.Today;
 }
 
-internal static class TechnicianStore
+internal static class SupplierStore
 {
-    private static readonly List<TechnicianRecord> Items = [];
+    private static readonly List<SupplierRecord> Items = [];
     private static readonly string FilePath =
-        Path.Combine(AppContext.BaseDirectory, "Data", "technicians.json");
+        Path.Combine(AppContext.BaseDirectory, "Data", "suppliers.json");
 
-    public static IReadOnlyList<TechnicianRecord> All => Items;
+    public static IReadOnlyList<SupplierRecord> All => Items;
     public static int Total => Items.Count;
 
     public static void Load()
@@ -25,7 +24,7 @@ internal static class TechnicianStore
             if (File.Exists(FilePath))
             {
                 var json = File.ReadAllText(FilePath);
-                var loaded = System.Text.Json.JsonSerializer.Deserialize<List<TechnicianRecord>>(json);
+                var loaded = System.Text.Json.JsonSerializer.Deserialize<List<SupplierRecord>>(json);
                 if (loaded is { Count: > 0 })
                 {
                     Items.Clear();
@@ -43,35 +42,23 @@ internal static class TechnicianStore
         Save();
     }
 
-    public static IEnumerable<TechnicianRecord> Search(string query)
+    public static void Add(SupplierRecord supplier)
     {
-        IEnumerable<TechnicianRecord> q = Items.OrderBy(t => t.Name);
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            return q;
-        }
-
-        query = query.Trim();
-        return q.Where(t =>
-            t.Name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-            t.Phone.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-            t.Address.Contains(query, StringComparison.OrdinalIgnoreCase));
-    }
-
-    public static void Add(TechnicianRecord tech)
-    {
-        Items.Insert(0, tech);
+        Items.Insert(0, supplier);
         Save();
     }
 
     public static void Remove(string id)
     {
-        Items.RemoveAll(t => t.Id == id);
+        Items.RemoveAll(s => s.Id == id);
         Save();
     }
 
+    public static SupplierRecord? FindByName(string name) =>
+        Items.FirstOrDefault(s => string.Equals(s.Name?.Trim(), name?.Trim(), StringComparison.OrdinalIgnoreCase));
+
     public static IReadOnlyList<string> Names() =>
-        Items.Select(t => t.Name).Where(n => !string.IsNullOrWhiteSpace(n)).Distinct().ToList();
+        Items.Select(s => s.Name).Where(n => !string.IsNullOrWhiteSpace(n)).Distinct().ToList();
 
     public static void Save()
     {
@@ -91,7 +78,7 @@ internal static class TechnicianStore
         }
         catch
         {
-            // ignore
+            // ignore persistence errors
         }
     }
 
@@ -100,9 +87,11 @@ internal static class TechnicianStore
         Items.Clear();
         Items.AddRange(
         [
-            new TechnicianRecord { Name = "أحمد محمد", Phone = "01001234567", Address = "القاهرة" },
-            new TechnicianRecord { Name = "محمد علي", Phone = "01009876543", Address = "الجيزة" },
-            new TechnicianRecord { Name = "إبراهيم حسن", Phone = "01112345678", Address = "الشروق" },
+            new SupplierRecord { Name = "شركة النور لقطع الغيار", Phone = "" },
+            new SupplierRecord { Name = "موتور تك", Phone = "" },
+            new SupplierRecord { Name = "أوتو بارتس مصر", Phone = "" },
+            new SupplierRecord { Name = "الوكيل المعتمد", Phone = "" },
+            new SupplierRecord { Name = "مورد محلي", Phone = "" },
         ]);
     }
 }
