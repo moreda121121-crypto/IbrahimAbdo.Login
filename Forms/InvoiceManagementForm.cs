@@ -340,27 +340,14 @@ internal sealed class InvoiceManagementForm : Form
 
     private Control BuildPagination()
     {
-        var bar = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.LeftToRight,
-            BackColor = Color.Transparent,
-            Padding = new Padding(4, 4, 0, 0)
-        };
-        bar.Controls.Add(CreateToolbarButton("السابق", false, (_, _) =>
+        var bar = PaginationStyle.CreateBar();
+        bar.Controls.Add(PaginationStyle.CreateNavButton("السابق", (_, _) =>
         {
             if (_page > 0) { _page--; BindGrid(); }
         }));
-        _lblPage = new Label
-        {
-            AutoSize = true,
-            ForeColor = InvoiceTheme.Muted,
-            Font = InvoiceTheme.SmallFont,
-            Margin = new Padding(12, 10, 12, 0),
-            Text = "صفحة 1"
-        };
+        _lblPage = PaginationStyle.CreatePageLabel();
         bar.Controls.Add(_lblPage);
-        bar.Controls.Add(CreateToolbarButton("التالي", false, (_, _) =>
+        bar.Controls.Add(PaginationStyle.CreateNavButton("التالي", (_, _) =>
         {
             var total = _showPurchase ? _filteredPurchases.Count : _filtered.Count;
             if ((_page + 1) * PageSize < total) { _page++; BindGrid(); }

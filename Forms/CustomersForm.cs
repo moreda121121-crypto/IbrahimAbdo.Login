@@ -167,10 +167,11 @@ internal sealed class CustomersForm : Form
             ["\uE77B", "العملاء", "customers"],
             ["\uE80F", "إدارة الفواتير", "dashboard"],
             ["\uE81E", "الأصناف", "items"],
-            ["\uE90F", "الخدمات", "services"],
+            ["SAFE", "الخزنة", "vault"],
+            ["\uE787", "صيانة العميل", "maintenance"],
             ["\uE8A5", "فاتورة البيع", "invoice"],
             ["\uE8CB", "فاتورة شراء", "purchase"],
-            ["\uE8F1", "المخزون", "inventory"],
+            ["\uE9F9", "التقارير", "reports"],
             ["\uE718", "الفنيين", "techs"],
             ["\uE716", "المستخدمون", "users"],
         ];
@@ -501,29 +502,16 @@ internal sealed class CustomersForm : Form
 
     private Control BuildPagination()
     {
-        var bar = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.LeftToRight,
-            BackColor = Color.Transparent,
-            Padding = new Padding(4, 4, 0, 0)
-        };
-        var prev = CreateToolbarButton("السابق", false, (_, _) =>
+        var bar = PaginationStyle.CreateBar();
+        var prev = PaginationStyle.CreateNavButton("السابق", (_, _) =>
         {
             if (_page > 0) { _page--; BindGrid(); }
         });
-        var next = CreateToolbarButton("التالي", false, (_, _) =>
+        var next = PaginationStyle.CreateNavButton("التالي", (_, _) =>
         {
             if ((_page + 1) * PageSize < _filtered.Count) { _page++; BindGrid(); }
         });
-        _lblPage = new Label
-        {
-            AutoSize = true,
-            ForeColor = InvoiceTheme.Muted,
-            Font = InvoiceTheme.SmallFont,
-            Margin = new Padding(12, 10, 12, 0),
-            Text = "صفحة 1"
-        };
+        _lblPage = PaginationStyle.CreatePageLabel();
         bar.Controls.Add(prev);
         bar.Controls.Add(_lblPage);
         bar.Controls.Add(next);

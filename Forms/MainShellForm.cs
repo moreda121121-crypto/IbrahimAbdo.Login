@@ -49,6 +49,7 @@ internal sealed class MainShellForm : Form
         InvoiceStore.Load();
         TechnicianStore.Load();
         PurchaseInvoiceStore.Load();
+        VaultStore.Load();
 
         var shell = new Panel
         {
@@ -81,14 +82,9 @@ internal sealed class MainShellForm : Form
 
     public void Navigate(string key)
     {
-        if (key is not ("invoice" or "customers" or "users" or "items" or "dashboard" or "techs" or "purchase"))
+        if (key is not ("invoice" or "customers" or "users" or "items" or "dashboard" or "techs" or "purchase" or "vault" or "maintenance" or "reports"))
         {
-            var label = key switch
-            {
-                "services" => "الخدمات",
-                "inventory" => "المخزون",
-                _ => key
-            };
+            var label = key;
             AppMessageDialog.Info(this, $"صفحة «{label}» قريباً.", "قريباً");
             return;
         }
@@ -108,6 +104,9 @@ internal sealed class MainShellForm : Form
                 "dashboard" => new InvoiceManagementForm(embedded: true),
                 "techs" => new TechniciansForm(embedded: true),
                 "purchase" => new PurchaseInvoiceForm(embedded: true),
+                "vault" => new VaultForm(embedded: true),
+                "maintenance" => new CustomerMaintenanceForm(embedded: true),
+                "reports" => new ReportsForm(embedded: true),
                 _ => new SalesInvoiceForm(embedded: true)
             };
             page.TopLevel = false;
@@ -134,6 +133,19 @@ internal sealed class MainShellForm : Form
             invoicePage.ReloadCustomers();
             invoicePage.ReloadTechnicians();
         }
+        else if (page is VaultForm vaultPage)
+        {
+            VaultStore.Load();
+            vaultPage.RefreshData();
+        }
+        else if (page is CustomerMaintenanceForm maintenancePage)
+        {
+            maintenancePage.RefreshData();
+        }
+        else if (page is ReportsForm reportsPage)
+        {
+            reportsPage.RefreshData();
+        }
 
         page.Visible = true;
         page.BringToFront();
@@ -147,6 +159,9 @@ internal sealed class MainShellForm : Form
             "dashboard" => "إدارة الفواتير - Ibrahim Abdo Auto Service",
             "techs" => "الفنيين - Ibrahim Abdo Auto Service",
             "purchase" => "فاتورة شراء - Ibrahim Abdo Auto Service",
+            "vault" => "الخزنة - Ibrahim Abdo Auto Service",
+            "maintenance" => "صيانة العملاء - Ibrahim Abdo Auto Service",
+            "reports" => "التقارير - Ibrahim Abdo Auto Service",
             _ => "فاتورة بيع - Ibrahim Abdo Auto Service"
         };
     }
@@ -205,10 +220,11 @@ internal sealed class MainShellForm : Form
             ["\uE77B", "العملاء", "customers"],
             ["\uE80F", "إدارة الفواتير", "dashboard"],
             ["\uE81E", "الأصناف", "items"],
-            ["\uE90F", "الخدمات", "services"],
+            ["SAFE", "الخزنة", "vault"],
+            ["\uE787", "صيانة العميل", "maintenance"],
             ["\uE8A5", "فاتورة البيع", "invoice"],
             ["\uE8CB", "فاتورة شراء", "purchase"],
-            ["\uE8F1", "المخزون", "inventory"],
+            ["\uE9F9", "التقارير", "reports"],
             ["\uE718", "الفنيين", "techs"],
             ["\uE716", "المستخدمون", "users"],
         ];

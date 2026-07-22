@@ -321,29 +321,16 @@ internal sealed class ProductsForm : Form
 
     private Control BuildPagination()
     {
-        var bar = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.LeftToRight,
-            BackColor = Color.Transparent,
-            Padding = new Padding(4, 2, 0, 0)
-        };
-        var prev = CreateToolbarButton("السابق", false, (_, _) =>
+        var bar = PaginationStyle.CreateBar();
+        var prev = PaginationStyle.CreateNavButton("السابق", (_, _) =>
         {
             if (_page > 0) { _page--; BindGrid(); }
         });
-        var next = CreateToolbarButton("التالي", false, (_, _) =>
+        var next = PaginationStyle.CreateNavButton("التالي", (_, _) =>
         {
             if ((_page + 1) * PageSize < _filtered.Count) { _page++; BindGrid(); }
         });
-        _lblPage = new Label
-        {
-            AutoSize = true,
-            ForeColor = InvoiceTheme.Muted,
-            Font = InvoiceTheme.SmallFont,
-            Margin = new Padding(12, 10, 12, 0),
-            Text = "صفحة 1"
-        };
+        _lblPage = PaginationStyle.CreatePageLabel();
         bar.Controls.Add(prev);
         bar.Controls.Add(_lblPage);
         bar.Controls.Add(next);

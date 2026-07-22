@@ -219,10 +219,11 @@ internal sealed class SalesInvoiceForm : Form
             ["\uE77B", "العملاء", "customers"],
             ["\uE80F", "إدارة الفواتير", "dashboard"],
             ["\uE81E", "الأصناف", "items"],
-            ["\uE90F", "الخدمات", "services"],
+            ["SAFE", "الخزنة", "vault"],
+            ["\uE787", "صيانة العميل", "maintenance"],
             ["\uE8A5", "فاتورة البيع", "invoice"],
             ["\uE8CB", "فاتورة شراء", "purchase"],
-            ["\uE8F1", "المخزون", "inventory"],
+            ["\uE9F9", "التقارير", "reports"],
             ["\uE718", "الفنيين", "techs"],
             ["\uE716", "المستخدمون", "users"],
         ];
